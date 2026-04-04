@@ -1,0 +1,14 @@
+# 虚拟环境，别人通过 uv sync 自行生成
+.venv/
+
+# Python 编译缓存
+__pycache__/
+*.pyc
+
+# IDE 配置文件
+.vscode/
+.idea/
+
+# 操作系统生成的临时文件
+.DS_Store
+Thumbs.db
