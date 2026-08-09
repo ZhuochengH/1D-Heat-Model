@@ -92,15 +92,20 @@ def add_step(target_T, hold_time):
     times.append(times[-1] + hold_time)
     temps.append(target_T)
 
-t_set_top = 103.0
+t_set_top = 100.0
 t_set_bottom = 50.0
-add_step(95.0, 120.0)
-add_step(t_set_bottom, 2)
-add_step(t_set_top, 0.0)
-add_step(t_set_bottom, 2)
-add_step(t_set_top, 0.0)
-add_step(t_set_bottom, 2)
-add_step(t_set_top, 0.0)
+t_set_extension = 80.0
+extention_time = 1
+add_step(90.0, 120.0)
+add_step(t_set_bottom, 1)
+add_step(t_set_extension, extention_time)
+add_step(t_set_top, 0.5)
+add_step(t_set_bottom, 1)
+add_step(t_set_extension, extention_time)
+add_step(t_set_top, 0.5)
+add_step(t_set_bottom, 1)
+add_step(t_set_extension, extention_time)
+add_step(t_set_top, 0.5)
 
 t_total = times[-1]
 
