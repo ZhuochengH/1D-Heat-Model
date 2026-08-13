@@ -179,6 +179,29 @@ def apply_analysis_cutoff(time_s, *arrays, analysis_end_s=None):
     return (time_s[mask],) + tuple(a[mask] for a in arrays)
 
 
+# 仓库根目录: <repo root>/Surface_calibration/peltier_surface_calibration_v2.py
+# -> __file__.resolve().parents[1] == <repo root>。
+# 基于 __file__ 而非 cwd，保证与脚本启动目录无关。
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+def resolve_output_dir(output_dir_arg, project_root=None):
+    """
+    解析校准输出目录。
+
+    - output_dir_arg 为 None -> <repo root>/calibration_output/
+                                （规范默认值，与 shell 当前工作目录无关）
+    - 显式绝对路径           -> 原样使用
+    - 显式相对路径           -> 相对当前工作目录解析（保持历史语义）
+
+    project_root 参数仅供测试注入；缺省使用模块级 PROJECT_ROOT。
+    """
+    if output_dir_arg is None:
+        root = Path(project_root) if project_root is not None else PROJECT_ROOT
+        return root / "calibration_output"
+    return Path(output_dir_arg)
+
+
 # ============================================================
 # 功能块 2：寻找设定温度分段
 # ============================================================
@@ -824,7 +847,16 @@ def main():
     parser.add_argument("--tau-min", type=float, default=0.05)
     parser.add_argument("--tau-max", type=float, default=120.0)
 
-    parser.add_argument("--output-dir", default="calibration_output")
+    parser.add_argument(
+        "--output-dir",
+        default=None,
+        help=(
+            "Output directory for calibration results. Default: "
+            "<repo root>/calibration_output/. An explicit value overrides "
+            "the default; relative paths resolve against the current "
+            "working directory."
+        ),
+    )
 
     parser.add_argument(
         "--analysis-end-s",
@@ -842,7 +874,9 @@ def main():
     args = parser.parse_args()
 
     input_path = Path(args.input_file)
-    output_dir = Path(args.output_dir)
+    # 默认 -> <repo root>/calibration_output/ (与 cwd 无关);
+    # 显式 --output-dir 覆盖默认 (绝对路径原样, 相对路径按 cwd 解析)。
+    output_dir = resolve_output_dir(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # sheet 参数: "0" -> 0，否则作为 sheet name
