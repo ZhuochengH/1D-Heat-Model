@@ -1,0 +1,18 @@
+{
+  "recommended_model": "Mean",
+  "sampling_interval_s": 1.0,
+  "steady_model": {
+    "equation": "T_inf = a*T_set + b",
+    "a": 0.9151437436676796,
+    "b_C": 7.539266717325255,
+    "R2": 0.9374289198189358
+  },
+  "dynamic_model": {
+    "equation": "T_s(t)=T_inf+[T_s(t_j)-T_inf]*exp(-(t-t_j)/tau_eff)",
+    "tau_eff_s": 18.441333594462826,
+    "tau_heating_s_diagnostic": 15.987746210085644,
+    "tau_cooling_s_diagnostic": 20.62627185159415,
+    "full_trace_RMSE_C": 3.5755059128784037
+  },
+  "note": "Use the Mean fit as the final model. T1/T2 fits are retained to assess spatial/sensor consistency. tau_eff is an effective response constant and may include thermometer lag and 1 Hz sampling effects."
+}
