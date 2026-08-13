@@ -122,6 +122,63 @@ def parse_setpoints(text: Optional[str]):
     return [float(v.strip()) for v in str(text).split(",") if v.strip()]
 
 
+def apply_analysis_cutoff(time_s, *arrays, analysis_end_s=None):
+    """
+    将时间轴及所有对齐数组截断到 time_s <= analysis_end_s 的样本。
+
+    用于排除最后受控段之后控制器关闭、表面温度被动冷却的数据，
+    防止其污染分段、稳态提取、稳态回归、动态 tau 拟合、RMSE 与绘图。
+    数学模型本身不做任何修改，仅在入口处裁剪样本。
+
+    Parameters
+    ----------
+    time_s : array-like
+        时间轴（秒）。
+    *arrays : array-like
+        与 time_s 长度一致、需一起截断的对齐数组（T1、T2、Tmean 等）。
+    analysis_end_s : float | None, default None
+        None 表示保留全部数据；
+        数值表示仅保留 time_s <= analysis_end_s 的样本。
+
+    Returns
+    -------
+    tuple
+        (time_s_cut, *arrays_cut)，元素顺序与传入一致。
+
+    Raises
+    ------
+    ValueError
+        当 analysis_end_s 为负数、非有限值、非数值，或截断后无任何
+        样本保留时，抛出清晰异常。
+    """
+    time_s = np.asarray(time_s, dtype=float)
+    arrays = tuple(np.asarray(a, dtype=float) for a in arrays)
+
+    if analysis_end_s is None:
+        return (time_s,) + arrays
+
+    if not np.isscalar(analysis_end_s):
+        raise ValueError(
+            f"analysis_end_s 必须是标量数值或 None，收到: {analysis_end_s!r}"
+        )
+
+    end = float(analysis_end_s)  # 非数值字符串在此抛出 ValueError
+    if not np.isfinite(end):
+        raise ValueError(
+            f"analysis_end_s 必须是有穷数值，收到: {analysis_end_s!r}"
+        )
+    if end < 0:
+        raise ValueError(f"analysis_end_s 不能为负数，收到: {end}")
+
+    mask = time_s <= end
+    if not mask.any():
+        raise ValueError(
+            f"analysis_end_s={end} 早于首个时间点，截断后没有任何样本保留。"
+        )
+
+    return (time_s[mask],) + tuple(a[mask] for a in arrays)
+
+
 # ============================================================
 # 功能块 2：寻找设定温度分段
 # ============================================================
@@ -769,6 +826,19 @@ def main():
 
     parser.add_argument("--output-dir", default="calibration_output")
 
+    parser.add_argument(
+        "--analysis-end-s",
+        type=float,
+        default=None,
+        help=(
+            "Optional analysis end time in seconds. Samples with "
+            "time_s > analysis_end_s are excluded from segmentation, "
+            "steady-state extraction, regression, tau fitting, RMSE, "
+            "plots and exports. Use to drop the passive-cooling tail "
+            "after the final controlled hold. Omit to keep all data."
+        ),
+    )
+
     args = parser.parse_args()
 
     input_path = Path(args.input_file)
@@ -818,6 +888,49 @@ def main():
         dt = float(args.dt)
         time_s = np.arange(len(Tmean), dtype=float) * dt
 
+    # ---- 分析截止（可选）----
+    # 在分段、稳态提取、稳态回归、动态 tau 拟合、RMSE、绘图与导出之前，
+    # 排除最后受控段之后控制器关闭、表面温度被动冷却的数据。
+    # 时间轴与所有对齐数组（含 Set 列）一起截断，保证长度一致。
+    if args.analysis_end_s is not None:
+        set_raw = (
+            pd.to_numeric(
+                df[args.set_col],
+                errors="coerce",
+            ).to_numpy(dtype=float)
+            if (
+                str(args.set_col).upper() != "NONE"
+                and args.set_col in df.columns
+            )
+            else None
+        )
+
+        if set_raw is None:
+            time_s, T1, T2, Tmean = apply_analysis_cutoff(
+                time_s,
+                T1,
+                T2,
+                Tmean,
+                analysis_end_s=args.analysis_end_s,
+            )
+            set_series_cut = None
+        else:
+            time_s, T1, T2, Tmean, set_series_cut = apply_analysis_cutoff(
+                time_s,
+                T1,
+                T2,
+                Tmean,
+                set_raw,
+                analysis_end_s=args.analysis_end_s,
+            )
+
+        print(
+            f"Info: 应用分析截止 analysis_end_s={args.analysis_end_s} s，"
+            f"保留 {len(time_s)} 个样本。"
+        )
+    else:
+        set_series_cut = None
+
     # ---- 分段 ----
     use_set_col = (
         str(args.set_col).upper() != "NONE"
@@ -825,10 +938,15 @@ def main():
     )
 
     if use_set_col:
-        set_series = pd.to_numeric(
-            df[args.set_col],
-            errors="coerce",
-        ).to_numpy(dtype=float)
+        # 已应用截止时直接使用截断后的 Set 序列；否则从 df 读取
+        set_series = (
+            set_series_cut
+            if set_series_cut is not None
+            else pd.to_numeric(
+                df[args.set_col],
+                errors="coerce",
+            ).to_numpy(dtype=float)
+        )
 
         segments = segments_from_set_column(set_series)
 
