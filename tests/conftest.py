@@ -10,5 +10,9 @@ matplotlib.use("Agg")
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SURFACE_CALIBRATION_DIR = PROJECT_ROOT / "Surface_calibration"
 
+# 让 tests 也能导入仓库根目录下的 heat_model 等顶层模块
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 if str(SURFACE_CALIBRATION_DIR) not in sys.path:
     sys.path.insert(0, str(SURFACE_CALIBRATION_DIR))

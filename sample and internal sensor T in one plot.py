@@ -46,6 +46,8 @@ import matplotlib.pyplot as plt
 
 import pandas as pd
 
+import heat_model
+
 PROJECT_ROOT = Path(__file__).resolve().parent
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "fdm_protocol_output" / "direct_internal_first300"
 # 校准版模型输出 (用于对比; 若存在)
@@ -55,77 +57,16 @@ DEFAULT_CALIBRATED_CSV = (
 )
 
 # ==========================================
-# 1. 定义几何厚度与空间网格（非均匀网格）— 与参考脚本一致
+# 材料 / 层叠 / 网格 / FDM 求解器全部复用 heat_model 模块 (唯一权威实现)。
+# 本脚本不再定义任何材料属性、几何厚度、网格构造或 FDM 时间循环。
 # ==========================================
-L_coc_bot = 180e-6      # 底层COC
-L_sample   = 20e-6      # 水性样品层
-L_oil      = 50e-6      # 矿物油层
-L_coc_top  = 600e-6     # 顶层COC
-L_air      = 3000e-6    # Air gap层（隔热层）
-L_pdms     = 200e-6     # Cap PDMS层
 
-L_total = L_coc_bot + L_sample + L_oil + L_coc_top + L_air + L_pdms
-
-# 各层界面位置
-x_coc_bot_end = L_coc_bot
-x_sample_end  = L_coc_bot + L_sample
-x_oil_end     = L_coc_bot + L_sample + L_oil
-x_coc_top_end = L_coc_bot + L_sample + L_oil + L_coc_top
-x_air_end     = x_coc_top_end + L_air
-
-dx_fine = 5e-6    # 精细区域（关注区）
-dx_air  = 200e-6  # Air gap（隔热层）
-dx_pdms = 50e-6   # PDMS顶盖
-
-def make_layer(x0, x1, dx):
-    n = max(1, int(round((x1 - x0) / dx)))
-    return np.linspace(x0, x1, n + 1)
-
-x = np.unique(np.concatenate([
-    make_layer(0,             x_coc_bot_end, dx_fine),
-    make_layer(x_coc_bot_end, x_sample_end,  dx_fine),
-    make_layer(x_sample_end,  x_oil_end,     dx_fine),
-    make_layer(x_oil_end,     x_coc_top_end, dx_fine),
-    make_layer(x_coc_top_end, x_air_end,     dx_air ),
-    make_layer(x_air_end,     L_total,       dx_pdms),
-]))
-Nx = len(x)
-h  = np.diff(x)  # 节点间距数组，长度 Nx-1
+# 顶部自然对流边界参数 (与校准版脚本一致)
+H_CONV        = 5.0     # W/(m²·K)
+T_AIR_AMBIENT = 25.0    # °C
 
 # ==========================================
-# 2. 定义材料属性并分配到对应网格 — 与参考脚本一致
-# ==========================================
-rho_coc,  k_coc,  cp_coc  = 1020.0, 0.13,   1800.0
-rho_w,    k_w,    cp_w    = 1000.0, 0.60,   4180.0
-rho_oil,  k_oil,  cp_oil  = 876.0,  0.142,  1962.0
-rho_air,  k_air,  cp_air  = 1.204,  0.0257, 1005.0
-rho_pdms, k_pdms, cp_pdms = 970.0,  0.15,   1460.0
-
-h_conv        = 5.0    # 顶部自然对流换热系数 W/(m²·K)
-T_air_ambient = 25.0   # 环境温度 °C
-
-rho = np.zeros(Nx)
-k   = np.zeros(Nx)
-cp  = np.zeros(Nx)
-
-for i, xi in enumerate(x):
-    if xi <= x_coc_bot_end + 1e-9:
-        rho[i], k[i], cp[i] = rho_coc,  k_coc,  cp_coc
-    elif xi <= x_sample_end + 1e-9:
-        rho[i], k[i], cp[i] = rho_w,    k_w,    cp_w
-    elif xi <= x_oil_end + 1e-9:
-        rho[i], k[i], cp[i] = rho_oil,  k_oil,  cp_oil
-    elif xi <= x_coc_top_end + 1e-9:
-        rho[i], k[i], cp[i] = rho_coc,  k_coc,  cp_coc
-    elif xi <= x_air_end + 1e-9:
-        rho[i], k[i], cp[i] = rho_air,  k_air,  cp_air
-    else:
-        rho[i], k[i], cp[i] = rho_pdms, k_pdms, cp_pdms
-
-idx_sample = np.where((x > L_coc_bot) & (x <= L_coc_bot + L_sample + 1e-9))[0]
-
-# ==========================================
-# 3. 协议加载 (T_internal) — 与参考脚本相同的验证逻辑
+# 1. 协议加载 (T_internal) — 与参考脚本相同的验证逻辑
 # ==========================================
 # 无静默回退: 本脚本只支持 excel 模式 (直接边界假设必须基于实测数据)。
 
@@ -217,18 +158,15 @@ def truncate_protocol(t_protocol, T_internal, max_rows=None):
 
 
 # ==========================================
-# 4. 直接边界模型 — 关键差异点
+# 2. 直接边界模型 — 关键差异点
 # ==========================================
 # 无稳态校准 (a*T+b), 无 tau 滤波, 无 T_surface_eq, 无动态表面模型。
-# T_internal 直接作为 FDM 底部边界。
-
-def resample_to_fdm_time(T_internal, t_protocol, time_fdm):
-    """T_internal 插值到 FDM 时间轴 (np.interp, 无过冲)。"""
-    return np.interp(time_fdm, t_protocol, T_internal)
+# T_internal 直接作为 FDM 底部边界 (由 heat_model.run_simulation 插值到
+# FDM 时间网格并施加 Dirichlet BC)。
 
 
 # ==========================================
-# 5. 对比指标 (直接 vs 校准动态模型)
+# 3. 对比指标 (直接 vs 校准动态模型)
 # ==========================================
 
 def compute_sample_comparison_metrics(
@@ -412,67 +350,33 @@ def main(argv=None):
     print(f"Effective simulated duration: {t_total:.3f} s")
 
     # ==========================================
-    # 7. FDM 系数预计算 — 与参考脚本一致
+    # 4. 运行共享 FDM 求解器 (底部边界 = T_internal, 无校准/无滤波)
     # ==========================================
-    k_half = 2 * k[:-1] * k[1:] / (k[:-1] + k[1:])
-
-    h_m = h[:-1]
-    h_p = h[1:]
-    k_m = k_half[:-1]
-    k_p = k_half[1:]
-
-    rho_int = rho[1:-1]
-    cp_int  = cp[1:-1]
-
-    dt_stable = rho_int * cp_int * (h_m + h_p) / (2 * (k_p / h_p + k_m / h_m))
-    dt = np.min(dt_stable) * 0.9
-
-    Nt = int(t_total / dt) + 1
-    time_fdm = np.linspace(0.0, t_total, Nt)
+    # 直接模式: T_internal 直接作为底部 Dirichlet 边界; 求解器内部插值到
+    # FDM 时间网格, 不施加任何 a/b 校准或 tau 滤波。
+    result = heat_model.run_simulation(
+        time_s=t_protocol,
+        bottom_temperature_C=T_internal,
+        materials=heat_model.DEFAULT_MATERIALS,
+        layers=heat_model.DEFAULT_LAYERS,
+        h_conv=H_CONV, T_air_ambient=T_AIR_AMBIENT,
+    )
+    t_array         = result["t_array"]
+    T_internal_arr  = result["T_bottom_arr"]   # 直接边界 = T_internal (插值后)
+    T_sample_arr    = result["T_sample_arr"]
+    dt              = result["dt"]
+    Nt              = result["Nt"]
+    Nx              = result["Nx"]
+    save_interval   = result["save_interval"]
+    L_total         = float(result["mesh"].boundaries[-1])
 
     print(f"网格节点数: {Nx}（原均匀5μm网格: {int(round(L_total/5e-6))+1}）")
     print(f"FDM 时间步长 dt = {dt*1e6:.1f} μs，时间点数 Nt = {Nt:,}")
-
-    # ---- 直接边界: T_internal 插值到 FDM 时间轴 ----
-    T_internal_fdm = resample_to_fdm_time(T_internal, t_protocol, time_fdm)
-    if len(time_fdm) != len(T_internal_fdm):
-        raise RuntimeError("FDM 时间轴与 T_internal_fdm 长度不一致。")
-    print(f"[align] len(time_fdm) == len(T_internal_fdm) == {len(time_fdm)}")
-
-    fac = 2 * dt / ((h_m + h_p) * rho_int * cp_int)
-    c_p = fac * k_p / h_p
-    c_m = fac * k_m / h_m
-    c_c = 1.0 - c_p - c_m
-
-    bc_A = (k[-1] / h[-1]) / (k[-1] / h[-1] + h_conv)
-    bc_B = h_conv * T_air_ambient / (k[-1] / h[-1] + h_conv)
+    print("[align] len(time_fdm) == len(bottom_temperature_fdm) == "
+          f"{len(result['time_fdm'])}")
 
     # ==========================================
-    # 8. FDM 主循环 — 唯一物理差异: T[0] = T_internal_fdm[n]
-    # ==========================================
-    T = np.ones(Nx) * 25.0
-
-    save_interval = max(1, int(0.1 / dt))
-    plot_times       = []
-    plot_T_internal  = []
-    plot_T_sample    = []
-
-    for n in range(Nt):
-        if n % save_interval == 0:
-            plot_times.append(time_fdm[n])
-            plot_T_internal.append(T_internal_fdm[n])
-            plot_T_sample.append(np.mean(T[idx_sample]))
-
-        T[0]    = T_internal_fdm[n]                       # 直接内部传感器 BC
-        T[1:-1] = c_c * T[1:-1] + c_m * T[:-2] + c_p * T[2:]  # 内部节点更新
-        T[-1]   = bc_A * T[-2] + bc_B                     # 顶部 Robin BC
-
-    t_array = np.array(plot_times)
-    T_internal_arr = np.array(plot_T_internal)
-    T_sample_arr = np.array(plot_T_sample)
-
-    # ==========================================
-    # 9. 输出
+    # 5. 输出
     # ==========================================
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)

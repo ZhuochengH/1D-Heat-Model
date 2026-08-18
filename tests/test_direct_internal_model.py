@@ -146,33 +146,19 @@ def test_no_time_col_generates_by_dt(m, tmp_path):
 
 
 # ===============================================================
-# 4+5. T_internal 重采样到 FDM 时间轴 + 直接边界精确等于它
+# 4+5. 直接脚本复用共享求解器 (无独立重采样实现)
 # ===============================================================
 
-def test_resample_to_fdm_time(m):
-    t_proto = np.arange(11, dtype=float)
-    T_int = 25.0 + 2.0 * np.sin(t_proto)
-    time_fdm = np.linspace(0, 10, 1001)
-    T_fdm = m.resample_to_fdm_time(T_int, t_proto, time_fdm)
-    assert len(time_fdm) == len(T_fdm)
-    assert T_fdm[0] == pytest.approx(T_int[0])
-    assert T_fdm[-1] == pytest.approx(T_int[-1])
-    # np.interp 无过冲
-    assert np.all(T_fdm >= np.min(T_int) - 1e-12)
-    assert np.all(T_fdm <= np.max(T_int) + 1e-12)
+def test_direct_script_has_no_independent_resample(m):
+    """直接脚本不再定义 resample_to_fdm_time; 插值由共享求解器负责。"""
+    assert not hasattr(m, "resample_to_fdm_time")
 
 
-def test_direct_boundary_equals_resampled_t_internal(m):
-    """直接边界 = 重采样后的 T_internal (无校准/无滤波)。"""
-    t_proto = np.arange(31, dtype=float)
-    T_int = np.concatenate([np.full(10, 30.0), np.full(21, 80.0)])
-    time_fdm = np.linspace(0, 30, 3001)
-    T_fdm = m.resample_to_fdm_time(T_int, t_proto, time_fdm)
-    # 边界就是 T_internal 本身: 无 a*T+b, 无 exp(-dt/tau)
-    np.testing.assert_allclose(T_fdm, T_fdm)  # 平凡, 但确认数组有效
-    # 边界值应包含 30 和 80 的插值范围
-    assert np.min(T_fdm) == pytest.approx(30.0)
-    assert np.max(T_fdm) == pytest.approx(80.0)
+def test_direct_script_uses_shared_solver(m):
+    """直接脚本调用 heat_model.run_simulation, 边界为 T_internal。"""
+    src = SCRIPT_PATH.read_text(encoding="utf-8")
+    assert "heat_model.run_simulation" in src
+    assert "bottom_temperature_C=T_internal" in src
 
 
 # ===============================================================
@@ -198,20 +184,23 @@ def test_no_calibration_or_tau_references_in_source(m):
 
 
 # ===============================================================
-# 8. FDM 接收 T_internal_fdm 作为边界
+# 8. 直接脚本不再包含重复 FDM 实现
 # ===============================================================
 
-def test_fdm_boundary_expression_is_t_internal(m):
+def test_direct_script_has_no_duplicate_fdm(m):
+    """直接脚本不含材料常量 / 网格构造 / FDM 系数 / 时间循环。"""
     src = SCRIPT_PATH.read_text(encoding="utf-8")
-    assert "T[0]    = T_internal_fdm[n]" in src
-    # 不得使用动态表面边界
-    assert "T_surface_fdm[n]" not in src
-    assert "T_surface_eq" not in src.replace(
-        "T_surface_eq_fdm", ""
-    ) or "T_surface_eq_fdm" not in src
-    # FDM 内部更新与顶部 Robin 与参考一致
-    assert "T[1:-1] = c_c * T[1:-1]" in src
-    assert "T[-1]   = bc_A * T[-2] + bc_B" in src
+    # 材料常量
+    for tok in ("rho_coc", "k_coc", "cp_coc", "rho_pdms", "k_pdms"):
+        assert tok not in src, tok
+    # 几何 / 网格 (层厚度常量与网格构造)
+    for tok in ("L_coc_bot", "L_sample", "L_oil", "L_coc_top", "L_air",
+                "L_pdms", "def make_layer", "dx_fine", "dx_air", "dx_pdms"):
+        assert tok not in src, tok
+    # FDM 系数与时间循环
+    for tok in ("k_half = 2 * k[:-1]", "c_c * T[1:-1]", "bc_A * T[-2]",
+                "T[0]    = T_internal_fdm[n]"):
+        assert tok not in src, tok
 
 
 # ===============================================================
@@ -219,30 +208,33 @@ def test_fdm_boundary_expression_is_t_internal(m):
 # ===============================================================
 
 def test_boundary_independent_of_external_calibration(m):
-    """CLI 无校准参数; 模块边界只依赖 T_internal。"""
+    """CLI 无校准参数; 直接边界只依赖 T_internal。"""
     args = m.parse_args(["--protocol-xlsx", "dummy.xlsx"])
     assert not hasattr(args, "calibration_a")
     assert not hasattr(args, "calibration_b")
     assert not hasattr(args, "tau_eff")
-    # 修改模块级校准相关假设不存在 -> 边界函数签名只有时间/温度
-    import inspect
-    sig = inspect.signature(m.resample_to_fdm_time)
-    assert list(sig.parameters) == ["T_internal", "t_protocol", "time_fdm"]
 
 
 # ===============================================================
-# 10. 输出数组对齐
+# 10. 输出数组对齐 (共享求解器结果)
 # ===============================================================
 
 def test_output_arrays_aligned(m):
+    """共享求解器返回的下采样数组长度一致且对应同一时间轴。"""
+    import heat_model
     t_proto = np.arange(11, dtype=float)
     T_int = 25.0 + np.sin(t_proto)
-    time_fdm = np.linspace(0, 10, 1001)
-    T_fdm = m.resample_to_fdm_time(T_int, t_proto, time_fdm)
-    assert len(time_fdm) == len(T_fdm)
-    # 模拟主循环保存采样: 每 100 步取一点 -> 仍对齐
-    save = np.arange(0, 1001, 100)
-    assert len(time_fdm[save]) == len(T_fdm[save])
+    result = heat_model.run_simulation(
+        time_s=t_proto, bottom_temperature_C=T_int,
+        materials=heat_model.DEFAULT_MATERIALS,
+        layers=heat_model.DEFAULT_LAYERS,
+        h_conv=5.0, T_air_ambient=25.0, save_dt=0.1,
+    )
+    n = len(result["t_array"])
+    assert len(result["T_bottom_arr"]) == n
+    assert len(result["T_sample_arr"]) == n
+    assert len(result["T_top_arr"]) == n
+    assert n > 0
 
 
 # ===============================================================

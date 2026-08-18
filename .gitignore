@@ -15,3 +15,5 @@ Thumbs.db
 HANDOFF.md
 /calibration_output/
 fdm_protocol_output/
+/temperature_alignment_output/
+/temperature_regime_output/

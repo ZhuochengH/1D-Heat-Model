@@ -339,14 +339,14 @@ def test_fdm_boundary_is_dynamic_surface(m):
 
 
 def test_main_uses_dynamic_surface_as_boundary(m):
-    """源码级验证: FDM 主循环边界使用 T_surface_fdm (而非 Ti/Teq/理想)。"""
+    """源码级验证: 校准版把动态表面温度作为共享求解器的底部边界。"""
     src = SCRIPT_PATH.read_text(encoding="utf-8")
-    # Section 5 的边界赋值必须用动态表面温度
-    assert "T[0]    = T_surface_fdm[n]" in src
-    # 边界数组由 prepare_fdm_boundary 返回
+    # 边界数组由 prepare_fdm_boundary 返回 (预处理, 在求解器之外)
     assert "T_internal_fdm, T_surface_eq_fdm, T_surface_fdm = prepare_fdm_boundary(" in src
-    # FDM 内部节点更新保持原样 (未修改求解器)
-    assert "T[1:-1] = c_c * T[1:-1]" in src
+    # 底部边界 = 动态表面温度 (而非 T_internal 或 T_surface_eq)
+    assert "bottom_temperature_C=T_surface_fdm" in src
+    # 交给共享求解器 (唯一权威 FDM 实现)
+    assert "heat_model.run_simulation" in src
 
 
 # ===============================================================
