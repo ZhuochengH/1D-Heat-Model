@@ -103,6 +103,24 @@ V2_CP_LIMITS = (2000.0, 10000.0)
 V1_BEST_POINT = (0.060, 2600.0)
 V1_BEST_RMSE = 15.4314
 
+# -------------------------------------------------------------
+# V3 修正时间目标分析 (corrected_time_objective_v3)
+# -------------------------------------------------------------
+# 使用修正后的目标: 预测在实测 TIME 坐标处插值 (查询轴 = measurement_time_s)。
+# 覆盖宽范围: 材料类值 + 系统级有效值。
+V3_K_GRID = [0.005, 0.008, 0.012, 0.018, 0.027, 0.040, 0.060, 0.080,
+             0.120, 0.160, 0.200, 0.240]
+V3_CP_GRID = [800.0, 1200.0, 1800.0, 2600.0, 4000.0, 6000.0, 8000.0,
+              10000.0]
+V3_K_LIMITS = (0.002, 0.35)
+V3_CP_LIMITS = (500.0, 15000.0)
+
+# 旧目标下选出的参数对 (历史暂定) 的修正目标参考值
+LEGACY_SELECTED_POINT = (0.068, 9200.0)
+LEGACY_SELECTED_CORRECTED_RMSE = 7.4345
+LEGACY_SELECTED_CORRECTED_MAE = 6.0083
+LEGACY_SELECTED_CORRECTED_MEAN = 2.2075
+
 TIME_COL = "time_s"
 TINT_COL = "T_internal_interpolated_C"
 TTOP_COL = "T_top_measured_C"
@@ -172,6 +190,30 @@ def compute_metrics(t, residual):
 def point_key(k_eff, cp_eff):
     """确定性参数点键 (量化到 1e-6, 避免浮点表示导致的重复)。"""
     return f"{float(k_eff):.6f}|{float(cp_eff):.6f}"
+
+
+def sample_prediction_at_measurement_times(measurement_time_s,
+                                           fdm_time_s,
+                                           predicted_temperature_C):
+    """权威时间采样助手: 把 FDM 预测线性插值到实测 TIME 坐标。
+
+    查询轴 = measurement_time_s (实测时间), 绝不允许把实测温度值当作
+    查询坐标 (旧 V1/V2 目标 bug 的根源)。
+
+    校验: 时间严格单调递增; fdm_time 单调递增; 预测数组与 fdm_time 等长。
+    """
+    mt = np.asarray(measurement_time_s, dtype=float)
+    ft = np.asarray(fdm_time_s, dtype=float)
+    fp = np.asarray(predicted_temperature_C, dtype=float)
+    if mt.ndim != 1 or ft.ndim != 1 or fp.ndim != 1:
+        raise ValueError("时间/预测数组必须是一维。")
+    if ft.size != fp.size:
+        raise ValueError("fdm_time_s 与 predicted_temperature_C 长度必须一致。")
+    if ft.size < 2 or not np.all(np.diff(ft) > 0):
+        raise ValueError("fdm_time_s 必须严格单调递增。")
+    if not np.all(np.diff(mt) > 0):
+        raise ValueError("measurement_time_s 必须严格单调递增。")
+    return np.interp(mt, ft, fp)
 
 
 # =============================================================
@@ -1210,6 +1252,286 @@ def stage_v2_integrity(v1_dir, v2_dir):
     return result
 
 
+# =============================================================
+# V3 —— 修正时间目标标定 (corrected_time_objective_v3)
+# =============================================================
+
+V3_DIR_DEFAULT = PROJECT_ROOT / "parameter_scan_output" / "72C" \
+    / "corrected_time_objective_v3"
+
+
+def _v3_evaluate(k_eff, cp_eff, t_proto, t_int, t_top_meas):
+    """V3 单点: 强制使用修正的时间目标 (实测时间坐标插值)。"""
+    return evaluate_point(k_eff, cp_eff, t_proto, t_int, t_top_meas)
+
+
+def stage_v3_cross_check(t_proto, t_int, t_top_meas, output_dir):
+    """修正目标参考点: 旧暂定参数 0.068/9200 的修正目标指标。"""
+    out = output_dir / "v3_coarse_scan.csv"
+    k, cp = LEGACY_SELECTED_POINT
+    if point_key(k, cp) in completed_keys(read_table(out)):
+        print("[v3 cross-check] 0.068/9200 已在 V3 中完成 (续跑跳过)")
+        return
+    row = evaluate_point_safe(k, cp, t_proto, t_int, t_top_meas)
+    append_rows(out, [row])
+    print(f"[v3 cross-check] k={k} cp={cp} corrected-RMSE={row['RMSE_C']:.4f} "
+          f"(参考 ~{LEGACY_SELECTED_CORRECTED_RMSE})")
+
+
+def stage_v3_coarse(t_proto, t_int, t_top_meas, output_dir):
+    """V3 粗扫: 12 x 8 = 96 点, 修正目标 (含 0.068/9200 交叉参考点)。"""
+    points = product_grid(V3_K_GRID, V3_CP_GRID)
+    return run_stage_points(points, t_proto, t_int, t_top_meas,
+                            "v3_coarse_scan.csv", output_dir, "v3coarse")
+
+
+def stage_v3_fine(t_proto, t_int, t_top_meas, output_dir):
+    """V3 细扫: 仅当粗最优在 k/cp 均为内点时, 跨最近邻居 11x11。"""
+    comb = build_combined_v3(output_dir)
+    best = best_point_from_table(comb)
+    if best is None:
+        raise RuntimeError("V3 无 OK 点。")
+    bk, bcp = float(best["k_eff_W_mK"]), float(best["cp_eff_J_kgK"])
+    if not is_interior(bk, bcp, V3_K_GRID, V3_CP_GRID):
+        print(f"[v3-fine] 粗最优 k={bk} cp={bcp} 位于 V3 边界 -> 不运行细扫。")
+        return False
+    k_grid, cp_grid = fine_grid_from_neighbors(
+        V3_K_GRID, V3_CP_GRID, bk, bcp, n=11,
+        k_limits=V3_K_LIMITS, cp_limits=V3_CP_LIMITS)
+    print(f"[v3-fine stage1] k {len(k_grid)} x cp {len(cp_grid)} = "
+          f"{len(k_grid)*len(cp_grid)} 点")
+    run_stage_points(product_grid(k_grid, cp_grid), t_proto, t_int, t_top_meas,
+                     "v3_fine_scan.csv", output_dir, "v3fine1")
+    # 可选 recenter (至多一次)
+    comb2 = build_combined_v3(output_dir)
+    best2 = best_point_from_table(comb2)
+    bk2, bcp2 = float(best2["k_eff_W_mK"]), float(best2["cp_eff_J_kgK"])
+    on_edge = (bk2 in (k_grid[0], k_grid[-1])
+               or bcp2 in (cp_grid[0], cp_grid[-1]))
+    k_ev = sorted(comb2["k_eff_W_mK"].unique())
+    cp_ev = sorted(comb2["cp_eff_J_kgK"].unique())
+    if on_edge and is_interior(bk2, bcp2, k_ev, cp_ev):
+        k2, c2 = fine_grid_from_neighbors(
+            k_ev, cp_ev, bk2, bcp2, n=11,
+            k_limits=V3_K_LIMITS, cp_limits=V3_CP_LIMITS)
+        if len(k2) > 2 and len(c2) > 2:
+            print(f"[v3-fine stage2 (recenter)] k {len(k2)} x cp {len(c2)}")
+            run_stage_points(product_grid(k2, c2), t_proto, t_int, t_top_meas,
+                             "v3_fine_scan.csv", output_dir, "v3fine2")
+    return True
+
+
+def build_combined_v3(output_dir):
+    """合并 V3 阶段表 -> v3_combined_scan.csv (只读 V3 目录)。"""
+    frames = []
+    for name in ("v3_coarse_scan.csv", "v3_fine_scan.csv"):
+        p = output_dir / name
+        if p.is_file():
+            frames.append(pd.read_csv(p))
+    if not frames:
+        return None
+    comb = pd.concat(frames, ignore_index=True)
+    comb = comb.drop_duplicates(
+        subset=["k_eff_W_mK", "cp_eff_J_kgK"], keep="first")
+    comb = comb.sort_values(["k_eff_W_mK", "cp_eff_J_kgK"], ignore_index=True)
+    comb.to_csv(output_dir / "v3_combined_scan.csv", index=False)
+    return comb
+
+
+def stage_v3_analysis(t_proto, t_int, t_top_meas, output_dir):
+    """V3 最终分析: 最优/内点判定, 景观, 剖面, 近最优, 对比, 迹线。"""
+    comb = build_combined_v3(output_dir)
+    best = best_point_from_table(comb)
+    if best is None:
+        raise RuntimeError("V3 无 OK 点可分析。")
+    bk, bcp = float(best["k_eff_W_mK"]), float(best["cp_eff_J_kgK"])
+    interior = is_interior(bk, bcp, V3_K_GRID, V3_CP_GRID)
+    print(f"[v3-analysis] BEST GRID POINT: k={bk} cp={bcp} "
+          f"RMSE={best['RMSE_C']:.4f} C  interior={interior}")
+
+    prefix = "best_fit_trace_v3" if interior else "best_boundary_trace_v3"
+    row, result = evaluate_point(bk, bcp, t_proto, t_int, t_top_meas,
+                                 return_result=True)
+    t_arr = result["t_array"]
+    T_top_pred = result["T_top_surface_arr"]
+    T_sample_pred = result["T_sample_arr"]
+    residual = np.interp(t_proto, t_arr, T_top_pred) - t_top_meas
+    trace = pd.DataFrame({
+        "time_s": t_proto,
+        "T_internal_C": t_int,
+        "T_top_measured_C": t_top_meas,
+        "T_top_predicted_C": np.interp(t_proto, t_arr, T_top_pred),
+        "T_sample_predicted_C": np.interp(t_proto, t_arr, T_sample_pred),
+        "top_residual_C": residual,
+    })
+    trace.to_csv(output_dir / f"{prefix}.csv", index=False)
+    plot_best_trace(t_proto, t_int, t_top_meas, t_proto,
+                    trace["T_top_predicted_C"].to_numpy(),
+                    trace["T_sample_predicted_C"].to_numpy(),
+                    output_dir / f"{prefix}.png")
+    regimes = load_regime_labels()
+    if regimes is not None and len(regimes) == len(t_top_meas):
+        plot_residuals(t_proto, residual,
+                       output_dir / "best_fit_residual_v3.png",
+                       regimes=regimes)
+
+    # 景观 (log k)
+    coarse = read_table(output_dir / "v3_coarse_scan.csv")
+    fine = read_table(output_dir / "v3_fine_scan.csv")
+    markers = [(*LEGACY_SELECTED_POINT, "legacy-selected 0.068/9200")]
+    plot_landscape_v2(coarse, "RMSE_C", "V3 coarse RMSE landscape (corrected objective)",
+                      output_dir / "rmse_landscape_v3_coarse.png",
+                      best=(bk, bcp), markers=markers)
+    if not fine.empty:
+        plot_landscape_v2(fine, "RMSE_C", "V3 fine RMSE landscape (corrected objective)",
+                          output_dir / "rmse_landscape_v3_fine.png",
+                          best=(bk, bcp), markers=markers)
+    plot_landscape_v2(comb, "mean_residual_C",
+                      "V3 mean-residual landscape (diagnostic)",
+                      output_dir / "mean_residual_landscape_v3.png",
+                      best=(bk, bcp), markers=markers)
+
+    # 剖面
+    prof_k, prof_cp = profile_minima(comb)
+    prof_k.to_csv(output_dir / "profile_rmse_vs_k_v3.csv", index=False)
+    prof_cp.to_csv(output_dir / "profile_rmse_vs_cp_v3.csv", index=False)
+    plot_profiles(prof_k, prof_cp,
+                  output_dir / "profile_rmse_vs_k_v3.png",
+                  output_dir / "profile_rmse_vs_cp_v3.png")
+
+    # 近最优
+    near = None
+    if interior:
+        near = near_optimal_regions(comb, float(best["RMSE_C"]))
+        for key, info in near.items():
+            print(f"  within {key}: {info['n_points']} pts, "
+                  f"k [{info['k_min']}, {info['k_max']}], "
+                  f"cp [{info['cp_min']:.0f}, {info['cp_max']:.0f}]")
+
+    # regime 诊断
+    if regimes is not None and len(regimes) == len(t_top_meas):
+        print("  regime diagnostics (diagnostic only):")
+        for reg in ("TRANSIENT_HEATING", "TRANSIENT_COOLING", "SETTLING",
+                    "TRANSITION_OTHER"):
+            mask = regimes == reg
+            m = compute_metrics(t_proto[mask], residual[mask])
+            print(f"    {reg:18s} n={mask.sum():3d} RMSE={m['rmse']:.3f} "
+                  f"MAE={m['mae']:.3f}")
+
+    # 对比 (legacy vs V3)
+    comparison = stage_v3_comparison(output_dir, best, interior, t_proto,
+                                     t_int, t_top_meas, trace)
+    return best
+
+
+def stage_v3_comparison(output_dir, v3_best, interior, t_proto, t_int,
+                        t_top_meas, v3_trace):
+    """三行对比: V2 旧目标 / 旧参数修正目标 / V3 修正目标。"""
+    legacy_rmse = 4.7449  # V2 存储值 (旧目标语义)
+    legacy_rows = [
+        {
+            "scan": "V2 legacy-objective (HISTORICAL)",
+            "k_eff_W_mK": 0.068, "cp_eff_J_kgK": 9200.0,
+            "RMSE_C": legacy_rmse, "MAE_C": np.nan,
+            "mean_residual_C": np.nan, "objective": "INVALID — temperature-as-time query",
+            "note": "DO NOT compare directly with corrected-objective RMSE",
+        },
+        {
+            "scan": "legacy params, corrected objective",
+            "k_eff_W_mK": 0.068, "cp_eff_J_kgK": 9200.0,
+            "RMSE_C": LEGACY_SELECTED_CORRECTED_RMSE,
+            "MAE_C": LEGACY_SELECTED_CORRECTED_MAE,
+            "mean_residual_C": LEGACY_SELECTED_CORRECTED_MEAN,
+            "objective": "corrected measurement-time",
+            "note": "PROVISIONAL legacy parameter pair",
+        },
+        {
+            "scan": "V3 corrected objective",
+            "k_eff_W_mK": float(v3_best["k_eff_W_mK"]),
+            "cp_eff_J_kgK": float(v3_best["cp_eff_J_kgK"]),
+            "RMSE_C": float(v3_best["RMSE_C"]),
+            "MAE_C": float(v3_best["MAE_C"]),
+            "mean_residual_C": float(v3_best["mean_residual_C"]),
+            "objective": "corrected measurement-time",
+            "note": "CURRENT CALIBRATION" if interior else "BOUNDARY — not final",
+        },
+    ]
+    df = pd.DataFrame(legacy_rows)
+    df.to_csv(output_dir / "comparison_legacy_vs_v3.csv", index=False)
+
+    # 对比图
+    fig, ax = plt.subplots(figsize=(13, 6))
+    ax.plot(t_proto, t_top_meas, color="#d62728", lw=1.5,
+            label="Measured Top COC surface T")
+    ax.plot(t_proto, np.interp(t_proto, t_proto, t_top_meas), color="#d62728",
+            lw=0, alpha=0)
+    # 旧参数修正目标预测
+    _, res_legacy = evaluate_point(*LEGACY_SELECTED_POINT, t_proto, t_int,
+                                   t_top_meas, return_result=True)
+    ax.plot(t_proto,
+            np.interp(t_proto, res_legacy["t_array"],
+                      res_legacy["T_top_surface_arr"]),
+            color="#9467bd", lw=1.5, ls="--",
+            label="legacy 0.068/9200 (corrected objective)")
+    ax.plot(v3_trace["time_s"], v3_trace["T_top_predicted_C"], color="#1f77b4",
+            lw=2, label="V3 best predicted T_top")
+    ax.set_xlabel("Time (s)"); ax.set_ylabel("Temperature (°C)")
+    ax.set_title("Legacy params vs V3 corrected-objective predicted T_top")
+    ax.grid(True, ls="--", alpha=0.5); ax.legend(loc="best")
+    fig.tight_layout(); fig.savefig(output_dir / "comparison_legacy_vs_v3.png",
+                                    dpi=150)
+    plt.close(fig)
+
+    # summary
+    lines = [
+        "CORRECTED-TIME OBJECTIVE CALIBRATION V3 — summary",
+        f"outcome: {'INTERIOR BASIN' if interior else 'STILL BOUNDARY-SEEKING'}",
+        f"V3 best k_eff: {v3_best['k_eff_W_mK']} W/(m·K)",
+        f"V3 best cp_eff: {v3_best['cp_eff_J_kgK']} J/(kg·K)",
+        f"V3 RMSE: {v3_best['RMSE_C']:.4f} C (corrected measurement-time objective)",
+        f"legacy 0.068/9200 corrected RMSE: {LEGACY_SELECTED_CORRECTED_RMSE} C",
+        ("INVALID comparison avoided: legacy 4.7449 C (temperature-as-time "
+         "query) is NOT compared as an equivalent metric."),
+        "V1/V2 remain HISTORICAL invalid-objective scans.",
+    ]
+    (output_dir / "summary_v3.txt").write_text("\n".join(lines) + "\n",
+                                               encoding="utf-8")
+
+    # 元数据
+    meta = {
+        "analysis_id": "corrected_time_objective_v3",
+        "objective": (
+            "RMSE of T_top_predicted interpolated at MEASUREMENT TIME "
+            "coordinates vs T_top_measured; equal weight; no time shift"
+        ),
+        "legacy_selected_point": {
+            "k_eff_W_mK": LEGACY_SELECTED_POINT[0],
+            "cp_eff_J_kgK": LEGACY_SELECTED_POINT[1],
+            "legacy_objective_RMSE_C": legacy_rmse,
+            "corrected_objective_RMSE_C": LEGACY_SELECTED_CORRECTED_RMSE,
+        },
+        "v3_grids": {"k": V3_K_GRID, "cp": V3_CP_GRID},
+        "v3_limits": {"k": list(V3_K_LIMITS), "cp": list(V3_CP_LIMITS)},
+        "best_grid": {
+            "k_eff_W_mK": float(v3_best["k_eff_W_mK"]),
+            "cp_eff_J_kgK": float(v3_best["cp_eff_J_kgK"]),
+            "RMSE_C": float(v3_best["RMSE_C"]),
+        },
+        "interior": interior,
+        "git_head": git_head(),
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "note": (
+            "V1/V2 are HISTORICAL results with invalid temperature-as-time "
+            "query objective; V3 uses the corrected measurement-time "
+            "objective. No direct comparison between legacy 4.7449 and "
+            "corrected-objective RMSE."
+        ),
+    }
+    (output_dir / "v3_metadata.json").write_text(
+        json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+    return df
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--output-dir", default=str(OUTPUT_DIR))
@@ -1217,7 +1539,8 @@ def main(argv=None):
     ap.add_argument("--stage", default="all",
                     choices=["all", "baseline_reference", "coarse", "extend",
                              "fine", "analysis", "v2", "v2-scan",
-                             "v2-analysis", "v2-integrity"])
+                             "v2-analysis", "v2-integrity", "v3", "v3-scan",
+                             "v3-analysis"])
     args = ap.parse_args(argv)
 
     output_dir = Path(args.output_dir)
@@ -1246,6 +1569,13 @@ def main(argv=None):
                           v1_dir=V1_DIR)
     if args.stage in ("v2", "v2-integrity"):
         stage_v2_integrity(V1_DIR, output_dir)
+
+    if args.stage in ("v3", "v3-scan"):
+        stage_v3_cross_check(t_proto, t_int, t_top_meas, output_dir)
+        stage_v3_coarse(t_proto, t_int, t_top_meas, output_dir)
+        stage_v3_fine(t_proto, t_int, t_top_meas, output_dir)
+    if args.stage in ("v3", "v3-analysis"):
+        stage_v3_analysis(t_proto, t_int, t_top_meas, output_dir)
     return 0
 
 

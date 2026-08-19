@@ -54,7 +54,12 @@ ALIGNED_CSV = (
     PROJECT_ROOT / "temperature_alignment_output" / "72C"
     / "aligned_internal_top_temperature.csv"
 )
-OUTPUT_DIR = PROJECT_ROOT / "calibrated_model_output" / "72C_nominal_v1"
+# 修正时间目标 (V3) 的最终输出目录。旧目录
+# calibrated_model_output/72C_nominal_v1/ 保留为
+# "legacy-selected 参数 (0.068/9200) 的诊断迹线" (PROVISIONAL)。
+OUTPUT_DIR = (
+    PROJECT_ROOT / "calibrated_model_output" / "72C_corrected_objective_v1"
+)
 
 H_CONV = 5.0
 T_AMB = 25.0
@@ -178,7 +183,7 @@ def run_nominal(time_s, t_int, t_top_meas, output_dir,
 
     # 元数据
     metadata = {
-        "model_version": "bare_top_calibrated_model_v1",
+        "model_version": "bare_top_calibrated_model_v1 (corrected measurement-time objective)",
         "source_calibration": cal.source_analysis,
         "k_eff_W_mK": cal.k_eff_W_mK,
         "cp_eff_J_kgK": cal.cp_eff_J_kgK,
@@ -202,7 +207,9 @@ def run_nominal(time_s, t_int, t_top_meas, output_dir,
         "note": (
             "Sample temperature is model-estimated (control-volume spatial "
             "average), not directly measured. k_eff/cp_eff are system-level "
-            "effective parameters, NOT intrinsic COC properties."
+            "effective parameters, NOT intrinsic COC properties. Final "
+            "output uses the corrected measurement-time objective (V3 "
+            "calibration)."
         ),
     }
     (output_dir / "final_72C_metadata.json").write_text(

@@ -60,11 +60,12 @@ runner = load_module(RUNNER, "run_calibrated_thermal_model")
 # ===============================================================
 
 def test_nominal_k_eff():
-    assert cfg.NOMINAL_BARE_TOP_CALIBRATION_V1.k_eff_W_mK == 0.068
+    """当前名义标定 = V3 修正目标 (0.0165)。"""
+    assert cfg.NOMINAL_BARE_TOP_CALIBRATION_V1.k_eff_W_mK == 0.0165
 
 
 def test_nominal_cp_eff():
-    assert cfg.NOMINAL_BARE_TOP_CALIBRATION_V1.cp_eff_J_kgK == 9200.0
+    assert cfg.NOMINAL_BARE_TOP_CALIBRATION_V1.cp_eff_J_kgK == 900.0
 
 
 def test_nominal_rho():
@@ -78,9 +79,16 @@ def test_nominal_geometry_preset():
 
 
 def test_nominal_name_and_source():
+    """当前名义标定 = V3 (corrected_time_objective_v3), accepted。"""
     cal = cfg.NOMINAL_BARE_TOP_CALIBRATION_V1
-    assert cal.name == "bare_top_72C_system_effective_v1"
-    assert cal.source_analysis == "system_effective_extended_v2"
+    assert cal.source_analysis == "corrected_time_objective_v3"
+    assert cal.status == "accepted"
+    assert cal.valid_for_final_calibration is True
+    assert cal.selection_objective == "corrected_measurement_time_rmse"
+    # 旧 0.068/9200 仍保留为历史暂定
+    leg = cfg.LEGACY_OBJECTIVE_PROVISIONAL_CALIBRATION
+    assert leg.k_eff_W_mK == 0.068 and leg.cp_eff_J_kgK == 9200.0
+    assert leg.valid_for_final_calibration is False
 
 
 # ===============================================================
@@ -99,8 +107,8 @@ def test_factory_does_not_mutate_default_materials():
 
 def test_factory_only_changes_coc():
     mats = cfg.make_nominal_calibrated_materials()
-    assert mats["COC"].k_W_mK == 0.068
-    assert mats["COC"].cp_J_kgK == 9200.0
+    assert mats["COC"].k_W_mK == 0.0165
+    assert mats["COC"].cp_J_kgK == 900.0
     assert mats["COC"].rho_kg_m3 == 1020.0
     for name in ("Water", "Oil", "Air", "PDMS"):
         assert (mats[name].k_W_mK, mats[name].rho_kg_m3, mats[name].cp_J_kgK) == (
@@ -119,8 +127,8 @@ def test_both_coc_layers_use_nominal():
     for i, layer in enumerate(heat_model.BARE_TOP_COC_LAYERS):
         if layer.material == "COC":
             nodes = ms.node_layer_index == i
-            assert np.all(ms.k[nodes] == 0.068)
-            assert np.all(ms.cp[nodes] == 9200.0)
+            assert np.all(ms.k[nodes] == 0.0165)
+            assert np.all(ms.cp[nodes] == 900.0)
 
 
 # ===============================================================
@@ -286,9 +294,10 @@ def test_metadata_records_git_and_interpretation(tmp_path):
     runner.run_nominal(_SYN_T, _SYN_TINT, _SYN_TTOP, out)
     import json
     meta = json.loads((out / "final_72C_metadata.json").read_text(encoding="utf-8"))
-    assert meta["model_version"] == "bare_top_calibrated_model_v1"
-    assert meta["k_eff_W_mK"] == 0.068
-    assert meta["cp_eff_J_kgK"] == 9200.0
+    assert meta["model_version"] == (
+        "bare_top_calibrated_model_v1 (corrected measurement-time objective)")
+    assert meta["k_eff_W_mK"] == 0.0165
+    assert meta["cp_eff_J_kgK"] == 900.0
     assert meta["rho_COC_kg_m3"] == 1020.0
     assert "system-level effective" in meta["interpretation"]
     assert "intrinsic" not in meta["interpretation"].lower().replace(
