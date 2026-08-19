@@ -57,11 +57,15 @@ DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "fdm_protocol_output" / "dynamic_first300"
 # 1+2. 材料库 / 层叠结构 / 网格与属性数组
 # ==========================================
 # 材料与层叠已抽离到 heat_model 模块, 单一事实来源:
-#   - heat_model.DEFAULT_MATERIALS : 复现原始论文模型的材料库 (k/rho/cp);
-#   - heat_model.DEFAULT_LAYERS    : 复现原始论文模型的层叠结构 (厚度/网格/角色);
+#   - heat_model.DEFAULT_MATERIALS     : 通用材料库 (k/rho/cp, 含 Air/PDMS);
+#   - heat_model.BARE_TOP_COC_LAYERS   : 实验裸顶层叠 (默认, 850 um, 无 Air/PDMS,
+#                                        Top COC 外表面直接暴露于环境);
+#   - heat_model.LEGACY_INSULATED_LAYERS : 历史绝缘 6 层 (4050 um, 含 Air/PDMS);
 #   - heat_model.build_layer_stack(...) : 自动构造非均匀网格与 k/rho/cp 数组
 #     (界面节点归属与原始脚本一致, 见 tests/test_material_layer_configuration.py)。
-# 默认配置与原脚本逐位一致 (数值回归测试见 tests)。
+# 实验工作流默认使用裸顶几何 (extension 72°C.xls / T Avg 对应 x=850 um 处
+# Top COC 外表面); 历史绝缘几何可用 --layer-stack legacy 显式选择。
+# 数值回归测试 (旧 6 层) 仍基于 LEGACY_INSULATED_LAYERS 逐位通过 (见 tests)。
 
 # 边界条件 (与材料定义分离, 保留在本脚本; 不新增边界物理)
 H_CONV        = 5.0     # 顶部自然对流换热系数 W/(m²·K)
@@ -263,6 +267,20 @@ def prepare_fdm_boundary(T_internal, t_protocol, a, b, tau_eff, time_fdm):
     return T_internal_fdm, T_surface_eq_fdm, T_surface_fdm
 
 
+def resolve_initial_temperature(mode, first_boundary):
+    """解析 --initial-temperature: 'auto' -> 底部边界首个值; 数值字符串 -> 显式初温。
+
+    实验默认 (auto): 假设热循环开始前芯片与 Peltier/内置传感器系统近似平衡。
+    校准版使用最终准备好的底部边界 (T_surface_dynamic[0]), 而非中间量。
+    """
+    if mode is None:
+        return float(first_boundary)
+    s = str(mode).strip().lower()
+    if s == "auto":
+        return float(first_boundary)
+    return float(s)
+
+
 def resolve_protocol_mode(mode, protocol_xlsx):
     """协议模式显式解析: 无静默回退。"""
     mode = str(mode).lower()
@@ -410,6 +428,14 @@ def parse_args(argv=None):
                    help="显式覆盖截距 b (°C) (必须与 --calibration-a 同时提供)")
     p.add_argument("--tau-eff", type=float, default=None,
                    help="有效动态时间常数 (秒), 动态表面模型必需")
+    p.add_argument("--layer-stack", default="bare-top",
+                   choices=sorted(heat_model.LAYER_STACK_PRESETS),
+                   help="层叠预设: bare-top = 实验裸顶 COC (默认, 850 um, "
+                        "无 Air/PDMS); legacy = 历史绝缘 6 层 (4050 um, "
+                        "含 Air/PDMS)")
+    p.add_argument("--initial-temperature", default="auto",
+                   help="初始温度: 'auto' (默认) = 第一个最终准备好的底部边界值 "
+                        "T_surface_dynamic[0]; 或显式数值, 如 27.5")
     p.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR),
                    help="输出目录 (plot/csv/metadata)")
     return p.parse_args(argv)
@@ -472,8 +498,13 @@ def main(argv=None):
     # ==========================================
     # 求解器要求一个准备好的底部温度迹线; 校准/动态表面模型是输入预处理,
     # 不属于 FDM 求解器本身 (见 heat_model.run_simulation)。
+    layers = heat_model.resolve_layer_stack(args.layer_stack)
+    desc = heat_model.describe_layer_stack(
+        heat_model.DEFAULT_MATERIALS, layers
+    )
+
     mesh, dt = heat_model.compute_stable_dt(
-        heat_model.DEFAULT_MATERIALS, heat_model.DEFAULT_LAYERS
+        heat_model.DEFAULT_MATERIALS, layers
     )
     Nt = int(t_total / dt) + 1
     time_fdm = np.linspace(0.0, t_total, Nt)   # 协议起点映射为 t=0
@@ -482,6 +513,24 @@ def main(argv=None):
 
     print(f"网格节点数: {Nx}（原均匀5μm网格: {int(round(L_total/5e-6))+1}）")
     print(f"FDM 时间步长 dt = {dt*1e6:.1f} μs，时间点数 Nt = {Nt:,}")
+
+    # ---- 几何 / 观测架构验证 (仅诊断, 不解释模型精度) ----
+    top_obs_pos = desc["top_surface_position_m"]
+    if top_obs_pos is None:
+        top_obs_pos = desc["outer_surface_position_m"]
+    print(f"[geometry] layer stack preset: {args.layer_stack} "
+          f"({desc['layer_count']} layers)")
+    print(f"[geometry] model total thickness: "
+          f"{desc['total_thickness_m']*1e6:.0f} um")
+    print(f"[geometry] top observation position: {top_obs_pos*1e6:.0f} um")
+    print(f"[geometry] top observation material: "
+          f"{desc['top_surface_material'] or desc['outer_surface_material']}")
+    print(f"[geometry] explicit Air material layer: "
+          f"{'YES' if desc['has_air_layer'] else 'NO'}")
+    print(f"[geometry] explicit PDMS material layer: "
+          f"{'YES' if desc['has_pdms_layer'] else 'NO'}")
+    print(f"[geometry] ambient convection boundary (Robin): YES "
+          f"(h_conv={H_CONV} W/(m2·K), T_air_ambient={T_AIR_AMBIENT} °C)")
 
     # 完整表面模型 (Option A: 先插值到 FDM 时间轴, 再积分动态模型)
     # 数据流: T_internal_fdm -> T_surface_eq_fdm -> T_surface_fdm
@@ -495,6 +544,16 @@ def main(argv=None):
           "len(T_surface_eq_fdm) == len(T_surface_fdm) == "
           f"{len(time_fdm)}")
 
+    # 实验初始条件策略: auto -> 全模型域均匀初始化为第一个最终准备好的
+    # 底部边界值 T_surface_dynamic[0] (非 T_internal/T_surface_eq 中间量);
+    # 可显式数值覆盖。
+    T_initial = resolve_initial_temperature(
+        args.initial_temperature, T_surface_fdm[0]
+    )
+    print(f"[initial] mode: {args.initial_temperature} -> "
+          f"T_initial = {T_initial:.3f} °C (auto = first prepared boundary "
+          f"T_surface_dynamic[0] = {float(T_surface_fdm[0]):.3f} °C)")
+
     # ==========================================
     # 5. 运行共享 FDM 求解器 (底部边界 = 动态表面温度)
     # ==========================================
@@ -502,8 +561,9 @@ def main(argv=None):
         time_s=time_fdm,
         bottom_temperature_C=T_surface_fdm,
         materials=heat_model.DEFAULT_MATERIALS,
-        layers=heat_model.DEFAULT_LAYERS,
+        layers=layers,
         h_conv=H_CONV, T_air_ambient=T_AIR_AMBIENT,
+        T_initial_C=T_initial,
     )
     t_array        = result["t_array"]
     save_interval  = result["save_interval"]
@@ -512,6 +572,8 @@ def main(argv=None):
     T_surface_eq_arr = T_surface_eq_fdm[::save_interval]
     T_surface_arr  = result["T_bottom_arr"]
     T_sample_arr   = result["T_sample_arr"]
+    T_outer_arr    = result["T_outer_surface_arr"]
+    T_top_surf_arr = result["T_top_surface_arr"]
 
     # ==========================================
     # 6. 绘图（物理分层, 科学标签）
@@ -567,6 +629,8 @@ def main(argv=None):
         "T_surface_equilibrium_C": T_surface_eq_arr,
         "T_surface_dynamic_C": T_surface_arr,
         "T_sample_C": T_sample_arr,
+        "T_outer_surface_C": T_outer_arr,
+        "T_top_surface_C": T_top_surf_arr,
     })
     out.to_csv(csv_path, index=False)
     print(f"Output CSV: {csv_path.resolve()}")
@@ -589,15 +653,29 @@ def main(argv=None):
         "tau_eff": tau,
         "FDM_dt": dt,
         "FDM_time_points": Nt,
+        "initial_temperature_mode": args.initial_temperature,
+        "initial_temperature_C": T_initial,
         "initial_condition": (
-            "T_surface[0] = T_surface_eq[0] "
-            "(假设表面初始与第一个记录的内部传感器温度平衡)"
+            "Experimental auto policy: full domain uniformly initialized to "
+            "the first final prepared bottom-boundary value "
+            f"T_surface_dynamic[0] = {float(T_surface_fdm[0]):.3f} °C"
         ),
         "output_downsampling_interval": float(save_interval * dt),
         "provisional_parameters": True,
+        "layer_stack_preset": args.layer_stack,
+        "layer_count": desc["layer_count"],
+        "total_thickness_m": desc["total_thickness_m"],
+        "top_observation_position_m": top_obs_pos,
+        "top_observation_material": (
+            desc["top_surface_material"] or desc["outer_surface_material"]
+        ),
+        "explicit_air_layer": desc["has_air_layer"],
+        "explicit_pdms_layer": desc["has_pdms_layer"],
+        "ambient_convection_boundary": True,
         "note": (
             "a/b/tau_eff 为 PROVISIONAL (暂定), 未来校准实验将替换; "
-            "替换无需修改 FDM 求解器。"
+            "替换无需修改 FDM 求解器。裸顶实验几何 (bare-top) 为默认; "
+            "已应用界面 FV 修正 + 样品空间平均 + 实验 auto 初始条件。"
         ),
     }
     with open(meta_path, "w", encoding="utf-8") as f:
@@ -626,6 +704,15 @@ def main(argv=None):
           f"{np.nanmax(T_surface_arr):.3f}] °C")
     print(f"T_sample min/max: [{np.nanmin(T_sample_arr):.3f}, "
           f"{np.nanmax(T_sample_arr):.3f}] °C")
+    print(f"T_outer_surface min/max: [{np.nanmin(T_outer_arr):.3f}, "
+          f"{np.nanmax(T_outer_arr):.3f}] °C")
+    if T_top_surf_arr.size:
+        print(f"T_top_surface (role) min/max: [{np.nanmin(T_top_surf_arr):.3f}, "
+              f"{np.nanmax(T_top_surf_arr):.3f}] °C (x={top_obs_pos*1e6:.0f} um)")
+    print(f"Model geometry: {desc['layer_count']} layers, "
+          f"{desc['total_thickness_m']*1e6:.0f} um total, "
+          f"top observation x={top_obs_pos*1e6:.0f} um "
+          f"({desc['top_surface_material'] or desc['outer_surface_material']})")
     print(f"FDM dt: {dt * 1e6:.1f} μs")
     print(f"FDM time points: {Nt:,}")
     print("FDM boundary variable: T_surface_dynamic (T[0] = T_surface_fdm[n])")

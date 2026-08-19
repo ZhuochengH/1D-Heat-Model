@@ -23,6 +23,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+import fv_reference
 import heat_model
 from heat_model import DEFAULT_LAYERS, DEFAULT_MATERIALS
 
@@ -287,7 +288,11 @@ def test_boundary_trace_too_few_points_raises():
 
 def _reference_old_direct_run(t_protocol, T_internal, h_conv=5.0,
                               T_air_ambient=25.0, save_dt=0.1):
-    """重构前 direct-internal 脚本第 7-8 节的逐字复刻 (回归基准)。"""
+    """重构前 direct-internal 脚本第 7-8 节的逐字复刻 (历史基线)。
+
+    界面物理修正后, 修正版求解器与此历史基线不再逐位等价
+    (区间导热 / 界面体积热容已修正, 见 test_interface_discretization.py)。
+    """
     mesh = heat_model.build_layer_stack(DEFAULT_MATERIALS, DEFAULT_LAYERS)
     k = mesh.k
     h = mesh.h
@@ -350,13 +355,17 @@ def _reference_old_direct_run(t_protocol, T_internal, h_conv=5.0,
 
 
 def test_direct_internal_numerical_regression():
+    """修正版 FV 求解器与独立修正版参考逐位一致;
+    旧方案 (_reference_old_direct_run) 为历史基线, 结果有意不同。"""
     new = heat_model.run_simulation(
         time_s=_SYNTH_T, bottom_temperature_C=_SYNTH_TINT,
         materials=DEFAULT_MATERIALS, layers=DEFAULT_LAYERS,
         h_conv=5.0, T_air_ambient=25.0, save_dt=0.1,
     )
-    ref = _reference_old_direct_run(_SYNTH_T, _SYNTH_TINT,
-                                    h_conv=5.0, T_air_ambient=25.0, save_dt=0.1)
+    ref = fv_reference.corrected_run(
+        DEFAULT_MATERIALS, DEFAULT_LAYERS, _SYNTH_T, _SYNTH_TINT,
+        h_conv=5.0, T_air_ambient=25.0, save_dt=0.1,
+    )
 
     assert new["dt"] == pytest.approx(ref["dt"], rel=0, abs=0)
     assert new["Nt"] == ref["Nt"]
@@ -367,5 +376,12 @@ def test_direct_internal_numerical_regression():
                                rtol=0, atol=tol)
     np.testing.assert_allclose(new["T_sample_arr"], ref["T_sample_arr"],
                                rtol=0, atol=tol)
-    np.testing.assert_allclose(new["T_top_arr"], ref["T_top_arr"],
+    np.testing.assert_allclose(new["T_top_arr"], ref["T_outer_surface_arr"],
                                rtol=0, atol=tol)
+
+    # 历史基线保留在 _reference_old_direct_run; 界面修正后与旧方案有意不同
+    old = fv_reference.old_run(
+        DEFAULT_MATERIALS, DEFAULT_LAYERS, _SYNTH_T, _SYNTH_TINT,
+        h_conv=5.0, T_air_ambient=25.0, save_dt=0.1,
+    )
+    assert np.max(np.abs(new["T_sample_arr"] - old["T_sample_arr"])) > 1e-4

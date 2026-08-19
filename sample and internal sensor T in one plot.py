@@ -27,6 +27,13 @@ Sensitivity/comparison model — 直接内置传感器边界假设:
 - FDM 物理/几何/网格/材料/数值方案与参考脚本完全一致。
 - 唯一物理差异: 底部边界从 T_surface_dynamic 改为 T_internal。
 
+几何 (默认 --layer-stack bare-top, 对应 extension 72°C.xls 实测设备):
+    Bottom COC 180 um -> Sample 20 um -> Oil 50 um -> Top COC 600 um
+    总厚度 850 um; 无 Air 层 / 无 PDMS 层;
+    Top COC 外表面 (x = 850 um) 直接暴露于环境空气 (Robin 对流边界);
+    顶部观测位置 = Top COC 外表面 = 模型最外节点 x[-1]。
+历史绝缘 6 层几何可通过 --layer-stack legacy 选择 (4050 um, 含 Air+PDMS)。
+
 数据流 (与校准版对比):
     校准版:  T_internal -> T_surface_eq -> T_surface_dynamic -> T[0] -> T_sample
     本脚本:  T_internal -> T[0] -> T_sample_direct
@@ -140,6 +147,20 @@ def _find_column(df, column):
         if re.sub(r"\s+", " ", str(c).strip()) == col_norm:
             return c
     return None
+
+
+def resolve_initial_temperature(mode, first_boundary):
+    """解析 --initial-temperature: 'auto' -> 底部边界首个值; 数值字符串 -> 显式初温。
+
+    实验默认 (auto): 假设热循环开始前芯片与内置传感器系统近似平衡,
+    全模型域均匀初始化为第一个实测内部温度 T_internal[0]。
+    """
+    if mode is None:
+        return float(first_boundary)
+    s = str(mode).strip().lower()
+    if s == "auto":
+        return float(first_boundary)
+    return float(s)
 
 
 def truncate_protocol(t_protocol, T_internal, max_rows=None):
@@ -311,6 +332,14 @@ def parse_args(argv=None):
                    help="最多使用前 N 个有效协议行 (开发/测试限流)")
     p.add_argument("--calibrated-csv", default=str(DEFAULT_CALIBRATED_CSV),
                    help="校准动态模型输出 CSV (用于对比; 可选)")
+    p.add_argument("--layer-stack", default="bare-top",
+                   choices=sorted(heat_model.LAYER_STACK_PRESETS),
+                   help="层叠预设: bare-top = 实验裸顶 COC (默认, 850 um, "
+                        "无 Air/PDMS); legacy = 历史绝缘 6 层 (4050 um, "
+                        "含 Air/PDMS)")
+    p.add_argument("--initial-temperature", default="auto",
+                   help="初始温度: 'auto' (默认) = 第一个实测内部温度 "
+                        "T_internal[0]; 或显式数值, 如 27.5")
     p.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR),
                    help="输出目录 (plot/csv/metadata)")
     return p.parse_args(argv)
@@ -354,16 +383,30 @@ def main(argv=None):
     # ==========================================
     # 直接模式: T_internal 直接作为底部 Dirichlet 边界; 求解器内部插值到
     # FDM 时间网格, 不施加任何 a/b 校准或 tau 滤波。
+    layers = heat_model.resolve_layer_stack(args.layer_stack)
+    desc = heat_model.describe_layer_stack(
+        heat_model.DEFAULT_MATERIALS, layers
+    )
+
+    # 实验初始条件策略: auto -> 全模型域均匀初始化为第一个实测内部温度
+    # (假设热循环前芯片与内置传感器系统近似平衡); 可显式数值覆盖。
+    T_initial = resolve_initial_temperature(
+        args.initial_temperature, T_internal[0]
+    )
+
     result = heat_model.run_simulation(
         time_s=t_protocol,
         bottom_temperature_C=T_internal,
         materials=heat_model.DEFAULT_MATERIALS,
-        layers=heat_model.DEFAULT_LAYERS,
+        layers=layers,
         h_conv=H_CONV, T_air_ambient=T_AIR_AMBIENT,
+        T_initial_C=T_initial,
     )
     t_array         = result["t_array"]
     T_internal_arr  = result["T_bottom_arr"]   # 直接边界 = T_internal (插值后)
     T_sample_arr    = result["T_sample_arr"]
+    T_outer_arr     = result["T_outer_surface_arr"]
+    T_top_surf_arr  = result["T_top_surface_arr"]
     dt              = result["dt"]
     Nt              = result["Nt"]
     Nx              = result["Nx"]
@@ -374,6 +417,34 @@ def main(argv=None):
     print(f"FDM 时间步长 dt = {dt*1e6:.1f} μs，时间点数 Nt = {Nt:,}")
     print("[align] len(time_fdm) == len(bottom_temperature_fdm) == "
           f"{len(result['time_fdm'])}")
+
+    # ---- 几何 / 观测架构验证 (仅诊断, 不解释模型精度) ----
+    top_obs_pos = desc["top_surface_position_m"]
+    if top_obs_pos is None:
+        top_obs_pos = desc["outer_surface_position_m"]
+    print(f"[geometry] layer stack preset: {args.layer_stack} "
+          f"({desc['layer_count']} layers)")
+    print(f"[geometry] model total thickness: "
+          f"{desc['total_thickness_m']*1e6:.0f} um")
+    print(f"[geometry] top observation position: {top_obs_pos*1e6:.0f} um")
+    print(f"[geometry] top observation material: "
+          f"{desc['top_surface_material'] or desc['outer_surface_material']}")
+    print(f"[geometry] explicit Air material layer: "
+          f"{'YES' if desc['has_air_layer'] else 'NO'}")
+    print(f"[geometry] explicit PDMS material layer: "
+          f"{'YES' if desc['has_pdms_layer'] else 'NO'}")
+    print(f"[geometry] ambient convection boundary (Robin): YES "
+          f"(h_conv={H_CONV} W/(m2·K), T_air_ambient={T_AIR_AMBIENT} °C)")
+    print(f"[initial] mode: {args.initial_temperature} -> "
+          f"T_initial = {T_initial:.3f} °C (auto = first T_internal "
+          f"{float(T_internal[0]):.3f} °C)")
+    sample_interval = desc["sample_position_m"]
+    if sample_interval is None:
+        raise ValueError("层叠结构中没有 role='sample' 的层, 无法提取样品温度。")
+    print(f"[sample] observation: control-volume spatial mean over "
+          f"{sample_interval[0]*1e6:.0f}-{sample_interval[1]*1e6:.0f} um "
+          f"(integral width {desc['sample_integral_width_m']*1e6:.1f} um, "
+          f"sum(weights)=1)")
 
     # ==========================================
     # 5. 输出
@@ -404,10 +475,14 @@ def main(argv=None):
     print(f"Output plot: {plot_path.resolve()}")
 
     # 9b. 数值输出 (0.1 s 下采样; 内部全分辨率)
+    # T_outer_surface_C == T_top_arr (最外表面); T_top_surface_C 为
+    # role='top_surface' 观测 (裸顶预设下与 T_outer_surface_C 相同, x=850 um)。
     out = pd.DataFrame({
         "time_s": t_array,
         "T_internal_boundary_C": T_internal_arr,
         "T_sample_direct_C": T_sample_arr,
+        "T_outer_surface_C": T_outer_arr,
+        "T_top_surface_C": T_top_surf_arr,
     })
     csv_path = output_dir / "direct_internal_fdm_output.csv"
     out.to_csv(csv_path, index=False)
@@ -431,15 +506,30 @@ def main(argv=None):
         "boundary_source": "T_internal",
         "calibration_applied": False,
         "dynamic_tau_applied": False,
+        "initial_temperature_mode": args.initial_temperature,
+        "initial_temperature_C": T_initial,
         "initial_condition": (
-            "T field initialized to 25.0 °C (identical to reference "
-            "calibrated model); boundary driven by T_internal from t=0"
+            "Experimental auto policy: full domain uniformly initialized to "
+            "the first measured internal temperature "
+            f"T_internal[0] = {float(T_internal[0]):.3f} °C; "
+            "boundary driven by T_internal from t=0"
         ),
         "CSV_downsampling_interval": float(save_interval * dt),
+        "layer_stack_preset": args.layer_stack,
+        "layer_count": desc["layer_count"],
+        "total_thickness_m": desc["total_thickness_m"],
+        "top_observation_position_m": top_obs_pos,
+        "top_observation_material": (
+            desc["top_surface_material"] or desc["outer_surface_material"]
+        ),
+        "explicit_air_layer": desc["has_air_layer"],
+        "explicit_pdms_layer": desc["has_pdms_layer"],
+        "ambient_convection_boundary": True,
         "note": (
             "Sensitivity/model-assumption comparison only. This model does "
             "NOT claim the internal sensor temperature equals the physical "
-            "Peltier surface temperature."
+            "Peltier surface temperature. Corrected interface FV + sample "
+            "spatial mean + experimental auto initial condition applied."
         ),
     }
     meta_path = output_dir / "run_metadata.json"
@@ -474,6 +564,15 @@ def main(argv=None):
           f"{np.nanmax(T_internal_arr):.3f}] °C")
     print(f"T_sample_direct min/max: [{np.nanmin(T_sample_arr):.3f}, "
           f"{np.nanmax(T_sample_arr):.3f}] °C")
+    print(f"T_outer_surface min/max: [{np.nanmin(T_outer_arr):.3f}, "
+          f"{np.nanmax(T_outer_arr):.3f}] °C")
+    if T_top_surf_arr.size:
+        print(f"T_top_surface (role) min/max: [{np.nanmin(T_top_surf_arr):.3f}, "
+              f"{np.nanmax(T_top_surf_arr):.3f}] °C (x={top_obs_pos*1e6:.0f} um)")
+    print(f"Model geometry: {desc['layer_count']} layers, "
+          f"{desc['total_thickness_m']*1e6:.0f} um total, "
+          f"top observation x={top_obs_pos*1e6:.0f} um "
+          f"({desc['top_surface_material'] or desc['outer_surface_material']})")
 
     if metrics is not None:
         print("\n[sample comparison vs calibrated dynamic model]")

@@ -19,11 +19,14 @@
 15. 缺失 sample 角色被清晰处理;
 16. 多个 sample 角色报错;
 17. 默认泛化配置与原层叠结构逐位一致;
-18. 数值回归 (旧 vs 新) 通过。
+18. 数值回归: 修正版 FV 求解器与独立修正版参考逐位一致
+    (旧方案为历史基线, 界面物理修正后结果有意不同, 见
+    tests/test_interface_discretization.py)。
 
-辅助 (回归基准):
+辅助 (历史基线):
 - _reference_old_mesh: 逐字复刻重构前脚本的网格/材料构造;
-- _reference_old_run : 逐字复刻重构前脚本的 FDM 求解器主循环。
+- _reference_old_run : 逐字复刻重构前脚本的 FDM 求解器主循环 (旧界面方案,
+                       仅作历史基线, 不再要求与修正版逐位等价)。
 """
 
 import importlib.util
@@ -32,6 +35,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+import fv_reference
 import heat_model
 from heat_model import (
     DEFAULT_LAYERS,
@@ -485,14 +489,16 @@ def test_build_layer_stack_reproduces_original_mesh_bit_exact():
 
 
 # ===============================================================
-# 18. 数值回归: 旧 vs 新
+# 18. 数值回归: 修正版 FV vs 独立参考 (界面物理已修正, 旧方案不再逐位等价)
 # ===============================================================
 
 _SYNTH_T = np.array([0.0, 2.0, 4.0, 6.0, 8.0, 10.0])
 _SYNTH_TINT = np.array([30.0, 95.0, 95.0, 40.0, 40.0, 60.0])
 
 
-def test_numerical_regression_old_vs_new(m):
+def test_numerical_regression_corrected_fv_vs_reference(m):
+    """修正版求解器与独立 FV 参考 (区间导热 + 体积加权热容) 逐位一致;
+    旧方案 (调和平均 + 左侧材料热容) 为历史基线, 结果有意不同。"""
     a, b, tau = 0.95, 1.8, 7.3
 
     # 新的调用方式: 先构造 FDM 时间网格, 预处理底部边界, 再交给共享求解器
@@ -510,8 +516,9 @@ def test_numerical_regression_old_vs_new(m):
         layers=DEFAULT_LAYERS,
         h_conv=5.0, T_air_ambient=25.0, save_dt=0.1,
     )
-    ref = _reference_old_run(
-        _SYNTH_T, _SYNTH_TINT, a, b, tau, m.prepare_fdm_boundary,
+    # 独立修正版参考 (fv_reference.corrected_run): 同样的边界预处理数组
+    ref = fv_reference.corrected_run(
+        DEFAULT_MATERIALS, DEFAULT_LAYERS, time_fdm, T_surface_fdm,
         h_conv=5.0, T_air_ambient=25.0, save_dt=0.1,
     )
 
@@ -520,17 +527,25 @@ def test_numerical_regression_old_vs_new(m):
     assert new["Nt"] == ref["Nt"]
     np.testing.assert_array_equal(new["t_array"], ref["t_array"])
 
-    # 温度场 (底部边界/样品/顶部) 严格一致
+    # 温度场 (底部边界/样品/顶部) 严格一致 (修正版位级等价)
     tol = 1e-8
-    np.testing.assert_allclose(new["T_bottom_arr"], ref["T_surface_arr"],
+    np.testing.assert_allclose(new["T_bottom_arr"], ref["T_bottom_arr"],
                                rtol=0, atol=tol)
     np.testing.assert_allclose(new["T_sample_arr"], ref["T_sample_arr"],
                                rtol=0, atol=tol)
-    np.testing.assert_allclose(new["T_top_arr"], ref["T_top_arr"],
+    np.testing.assert_allclose(new["T_top_arr"], ref["T_outer_surface_arr"],
                                rtol=0, atol=tol)
 
     # 记录最大绝对差 (供报告; 预期为 0.0)
     max_d_sample = np.max(np.abs(new["T_sample_arr"] - ref["T_sample_arr"]))
-    max_d_top = np.max(np.abs(new["T_top_arr"] - ref["T_top_arr"]))
+    max_d_top = np.max(np.abs(new["T_top_arr"] - ref["T_outer_surface_arr"]))
     assert max_d_sample <= tol
     assert max_d_top <= tol
+
+    # 历史基线: 旧界面方案 (调和平均) 仍保留在 _reference_old_run / fv_reference
+    # 界面物理修正后其结果与修正版有意不同 (不再 bit-exact)。
+    old = fv_reference.old_run(
+        DEFAULT_MATERIALS, DEFAULT_LAYERS, time_fdm, T_surface_fdm,
+        h_conv=5.0, T_air_ambient=25.0, save_dt=0.1,
+    )
+    assert np.max(np.abs(new["T_sample_arr"] - old["T_sample_arr"])) > 1e-4

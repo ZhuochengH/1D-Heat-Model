@@ -17,3 +17,5 @@ HANDOFF.md
 fdm_protocol_output/
 /temperature_alignment_output/
 /temperature_regime_output/
+/parameter_scan_output/
+/calibrated_model_output/
