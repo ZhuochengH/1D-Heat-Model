@@ -56,13 +56,13 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.ticker
 
-import heat_model
+from thermal_model.core import heat_model
 
 # =============================================================
 # 常量
 # =============================================================
 
-PROJECT_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 ALIGNED_CSV = (
     PROJECT_ROOT / "temperature_alignment_output" / "72C"
     / "aligned_internal_top_temperature.csv"

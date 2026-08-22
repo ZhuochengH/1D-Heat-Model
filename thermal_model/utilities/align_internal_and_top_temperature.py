@@ -46,7 +46,7 @@ import matplotlib.pyplot as plt
 
 import pandas as pd
 
-PROJECT_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "temperature_alignment_output" / "72C"
 
 DEFAULT_INTERNAL_XLSX = (

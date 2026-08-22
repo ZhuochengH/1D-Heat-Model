@@ -53,9 +53,9 @@ import matplotlib.pyplot as plt
 
 import pandas as pd
 
-import heat_model
+from thermal_model.core import heat_model
 
-PROJECT_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "fdm_protocol_output" / "direct_internal_first300"
 # 校准版模型输出 (用于对比; 若存在)
 DEFAULT_CALIBRATED_CSV = (

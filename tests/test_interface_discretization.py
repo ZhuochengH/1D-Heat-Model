@@ -19,9 +19,9 @@
 import numpy as np
 import pytest
 
-import fv_reference
-import heat_model
-from heat_model import (
+from thermal_model.core import fv_reference
+from thermal_model.core import heat_model
+from thermal_model.core.heat_model import (
     BARE_TOP_COC_LAYERS,
     DEFAULT_MATERIALS,
     Layer,

@@ -42,14 +42,14 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 
-import heat_model
-from calibrated_model_config import (
+from thermal_model.core import heat_model
+from thermal_model.config.calibrated_model_config import (
     NOMINAL_BARE_TOP_CALIBRATION_V1,
     make_nominal_calibrated_materials,
     nominal_layer_stack,
 )
 
-PROJECT_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 ALIGNED_CSV = (
     PROJECT_ROOT / "temperature_alignment_output" / "72C"
     / "aligned_internal_top_temperature.csv"

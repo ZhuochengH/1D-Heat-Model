@@ -23,13 +23,13 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-import fv_reference
-import heat_model
-from heat_model import DEFAULT_LAYERS, DEFAULT_MATERIALS
+from thermal_model.core import fv_reference
+from thermal_model.core import heat_model
+from thermal_model.core.heat_model import DEFAULT_LAYERS, DEFAULT_MATERIALS
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-CALIBRATED_SCRIPT = PROJECT_ROOT / "sample and heater T in one plot.py"
-DIRECT_SCRIPT = PROJECT_ROOT / "sample and internal sensor T in one plot.py"
+CALIBRATED_SCRIPT = PROJECT_ROOT / "workflows/diagnostics/sample and heater T in one plot.py"
+DIRECT_SCRIPT = PROJECT_ROOT / "workflows/diagnostics/sample and internal sensor T in one plot.py"
 
 
 def _load(path, name):

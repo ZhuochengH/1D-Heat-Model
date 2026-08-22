@@ -33,11 +33,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import heat_model
-from heat_model import DEFAULT_MATERIALS
+from thermal_model.core import heat_model
+from thermal_model.core.heat_model import DEFAULT_MATERIALS
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-SCRIPT = PROJECT_ROOT / "scan_effective_thermal_parameters.py"
+SCRIPT = PROJECT_ROOT / "thermal_model/utilities/scan_effective_thermal_parameters.py"
 
 
 def load_scan():

@@ -19,7 +19,7 @@
 
 import numpy as np
 
-import heat_model
+from thermal_model.core import heat_model
 
 
 def _layer_props(materials, layers):

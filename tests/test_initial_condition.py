@@ -20,8 +20,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-import heat_model
-from heat_model import BARE_TOP_COC_LAYERS, DEFAULT_MATERIALS
+from thermal_model.core import heat_model
+from thermal_model.core.heat_model import BARE_TOP_COC_LAYERS, DEFAULT_MATERIALS
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 ALIGNED_CSV = (
@@ -29,8 +29,8 @@ ALIGNED_CSV = (
     / "aligned_internal_top_temperature.csv"
 )
 
-DIRECT_SCRIPT = PROJECT_ROOT / "sample and internal sensor T in one plot.py"
-HEATER_SCRIPT = PROJECT_ROOT / "sample and heater T in one plot.py"
+DIRECT_SCRIPT = PROJECT_ROOT / "workflows/diagnostics/sample and internal sensor T in one plot.py"
+HEATER_SCRIPT = PROJECT_ROOT / "workflows/diagnostics/sample and heater T in one plot.py"
 
 
 def load_script(path, module_name):

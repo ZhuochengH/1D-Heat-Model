@@ -35,7 +35,7 @@
 
 from dataclasses import dataclass
 
-from heat_model import BARE_TOP_COC_LAYERS, copy_default_materials
+from thermal_model.core.heat_model import BARE_TOP_COC_LAYERS, copy_default_materials
 
 
 @dataclass(frozen=True)

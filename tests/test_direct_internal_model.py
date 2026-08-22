@@ -23,7 +23,7 @@ import pandas as pd
 import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-SCRIPT_PATH = PROJECT_ROOT / "sample and internal sensor T in one plot.py"
+SCRIPT_PATH = PROJECT_ROOT / "workflows/diagnostics/sample and internal sensor T in one plot.py"
 
 REAL_XLSX = (
     PROJECT_ROOT.parent / "Calibration"
@@ -221,7 +221,7 @@ def test_boundary_independent_of_external_calibration(m):
 
 def test_output_arrays_aligned(m):
     """共享求解器返回的下采样数组长度一致且对应同一时间轴。"""
-    import heat_model
+    from thermal_model.core import heat_model
     t_proto = np.arange(11, dtype=float)
     T_int = 25.0 + np.sin(t_proto)
     result = heat_model.run_simulation(

@@ -35,9 +35,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-import fv_reference
-import heat_model
-from heat_model import (
+from thermal_model.core import fv_reference
+from thermal_model.core import heat_model
+from thermal_model.core.heat_model import (
     DEFAULT_LAYERS,
     DEFAULT_MATERIALS,
     Layer,
@@ -46,7 +46,7 @@ from heat_model import (
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-SCRIPT_PATH = PROJECT_ROOT / "sample and heater T in one plot.py"
+SCRIPT_PATH = PROJECT_ROOT / "workflows/diagnostics/sample and heater T in one plot.py"
 
 
 def load_main_module():

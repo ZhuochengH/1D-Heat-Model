@@ -7,23 +7,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
-fig, ax = plt.subplots(figsize=(14, 7))
-
-t_array = np.array(plot_times)
-T_s_array = np.array(plot_T_sample)
-
-# 绘制基础曲线
-ax.plot(plot_times, plot_T_heater, label='Heater Temperature', color='#d62728', linestyle='--', linewidth=2)
-ax.plot(plot_times, plot_T_sample, label='Sample Layer Temperature', color='#1f77b4', linewidth=2)
-
-ax.set_title('Thermal Cycling Profile: Heater vs Sample Layer', fontsize=15, fontweight='bold')
-ax.set_xlabel('Time (seconds)', fontsize=12)
-ax.set_ylabel('Temperature ($^\circ$C)', fontsize=12)
-ax.grid(True, linestyle='--', alpha=0.6)
-ax.set_xlim(0, max(plot_times))
-ax.set_ylim(20, 110)
-ax.legend(fontsize=12, loc='lower right')
-
 
 def find_intersections(x_data, y_data, y_level):
     """
@@ -152,12 +135,41 @@ class DraggableHLine:
         self.line.figure.canvas.draw_idle()
 
 
-# --- 实例化两条可拖动的横线 ---
-# 必须赋值给变量，否则 Python 的垃圾回收机制会清理掉它们，导致交互失效
-hline1 = DraggableHLine(ax, y_init=95.0, x_data=t_array, y_data=T_s_array,
-                         color='darkorange', label_prefix='Denaturation')
-hline2 = DraggableHLine(ax, y_init=60.0, x_data=t_array, y_data=T_s_array,
-                         color='purple', label_prefix='Annealing')
+def main():
+    """顶层绘图脚本 (仅在本文件作为脚本执行时运行)。
 
-plt.tight_layout()
-plt.show()
+    需要调用方先在作用域中提供:
+        plot_times / plot_T_heater / plot_T_sample
+    (原为无 `if __name__ == '__main__'` 保护的顶层代码;
+     为可被 import 复用而放入 main(), 行为保持不变。)
+    """
+    fig, ax = plt.subplots(figsize=(14, 7))
+
+    t_array = np.array(plot_times)
+    T_s_array = np.array(plot_T_sample)
+
+    # 绘制基础曲线
+    ax.plot(plot_times, plot_T_heater, label='Heater Temperature', color='#d62728', linestyle='--', linewidth=2)
+    ax.plot(plot_times, plot_T_sample, label='Sample Layer Temperature', color='#1f77b4', linewidth=2)
+
+    ax.set_title('Thermal Cycling Profile: Heater vs Sample Layer', fontsize=15, fontweight='bold')
+    ax.set_xlabel('Time (seconds)', fontsize=12)
+    ax.set_ylabel(r'Temperature ($^\circ$C)', fontsize=12)
+    ax.grid(True, linestyle='--', alpha=0.6)
+    ax.set_xlim(0, max(plot_times))
+    ax.set_ylim(20, 110)
+    ax.legend(fontsize=12, loc='lower right')
+
+    # --- 实例化两条可拖动的横线 ---
+    # 必须赋值给变量，否则 Python 的垃圾回收机制会清理掉它们，导致交互失效
+    hline1 = DraggableHLine(ax, y_init=95.0, x_data=t_array, y_data=T_s_array,
+                             color='darkorange', label_prefix='Denaturation')
+    hline2 = DraggableHLine(ax, y_init=60.0, x_data=t_array, y_data=T_s_array,
+                             color='purple', label_prefix='Annealing')
+
+    plt.tight_layout()
+    plt.show()
+
+
+if __name__ == "__main__":
+    main()

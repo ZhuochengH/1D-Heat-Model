@@ -29,7 +29,7 @@ import sys
 # Add the parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from classify_temperature_regimes import (
+from thermal_model.utilities.classify_temperature_regimes import (
     calculate_derivatives,
     smooth_derivatives,
     classify_regimes,
@@ -446,14 +446,15 @@ def test_no_fdm_or_fitting_invoked():
     This is a static check that the script doesn't import or call
     any FDM-related functions.
     """
-    import classify_temperature_regimes as mod
+    from thermal_model.utilities import classify_temperature_regimes as mod
     
     # Check that certain fitting-related functions are NOT called
     # (This is mostly a code inspection check)
     
     # Verify main() doesn't try to import FDM modules
     # We can do this by checking the imports at module level
-    source = open(Path(__file__).parent.parent / 'classify_temperature_regimes.py').read()
+    source = (Path(__file__).parent.parent / 'thermal_model' / 'utilities'
+          / 'classify_temperature_regimes.py').read_text(encoding='utf-8')
     
     assert 'scipy.optimize' not in source, "Should not use scipy.optimize for fitting"
     # The best check: verify main() returns without performing fitting

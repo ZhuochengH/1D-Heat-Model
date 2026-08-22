@@ -30,7 +30,7 @@ import pandas as pd
 import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-SCRIPT_PATH = PROJECT_ROOT / "sample and heater T in one plot.py"
+SCRIPT_PATH = PROJECT_ROOT / "workflows/diagnostics/sample and heater T in one plot.py"
 
 # 真实校准文件 (任务 4: 默认来源)
 REAL_CALIBRATION_FILE = (

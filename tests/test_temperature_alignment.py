@@ -24,7 +24,7 @@ import pandas as pd
 import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-SCRIPT_PATH = PROJECT_ROOT / "align_internal_and_top_temperature.py"
+SCRIPT_PATH = PROJECT_ROOT / "thermal_model/utilities/align_internal_and_top_temperature.py"
 
 
 def load_module():

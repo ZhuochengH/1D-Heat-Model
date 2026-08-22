@@ -45,9 +45,9 @@ import matplotlib.pyplot as plt
 
 import pandas as pd
 
-import heat_model
+from thermal_model.core import heat_model
 
-PROJECT_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CALIBRATION_FILE = (
     PROJECT_ROOT / "calibration_output" / "final_calibration_equation.txt"
 )
