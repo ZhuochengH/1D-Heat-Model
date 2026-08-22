@@ -1,0 +1,44 @@
+{
+  "model_id": "FINAL_FROZEN_THERMAL_MODEL_V1",
+  "date_promoted": "2026-08-22",
+  "status": "FROZEN",
+  "parameters": {
+    "k_eff_W_mK": 0.0675,
+    "cp_eff_J_kgK": 700.0,
+    "rho_COC_kg_m3": 1020.0,
+    "tau_top_s": 8.0,
+    "h_conv_W_m2K": 10.0,
+    "emissivity": 0.9,
+    "sigma_SB_W_m2K4": 5.670374419e-08,
+    "view_factor": 1.0,
+    "radiation": "nonlinear Stefan-Boltzmann",
+    "lag_placement": "output-side (Top observation only; never sample)"
+  },
+  "calibration": {
+    "dataset": "corrected 66C redo (extension 66C_redo.xls + matching internal)",
+    "RMSE_C": 0.6368,
+    "synchronization": "SIMULTANEOUS_START_RELATIVE_T0",
+    "objective": "predicted Top COC vs measured Top COC (measured-time interpolation)"
+  },
+  "external_validation": {
+    "60C": {"RMSE_C": 1.3749, "synchronization": "SETPOINT_90C_EVENT_PLUS_1S", "authoritative": true},
+    "72C": {"RMSE_C": 3.0817, "synchronization": "SETPOINT_90C_EVENT_PLUS_1S", "authoritative": true},
+    "3s_extension": {"RMSE_C": 1.0643, "synchronization": "SIMULTANEOUS_START_RELATIVE_T0", "authoritative": true}
+  },
+  "external_validation_summary": {
+    "mean_RMSE_C": 1.8403,
+    "median_RMSE_C": 1.3749,
+    "worst_RMSE_C": 3.0817,
+    "calibration_included": false
+  },
+  "major_limitation": "72C protocol shows a larger cooling-phase mismatch (cooling RMSE ~4.09 C); documented reduced-order transient limitation; parameters not altered to improve it.",
+  "scientific_status": {
+    "sample_directly_measured": false,
+    "insulated_geometry_independently_validated": false,
+    "bare_model": "calibrated + externally validated",
+    "insulated_model": "forward extension using 3 mm sealed air + 200 um PDMS; not independently validated",
+    "sample_temperature": "model-predicted hidden thermal state, not directly measured"
+  },
+  "architecture": "measured internal temperature -> 1D multilayer FDM + convection + nonlinear radiation -> raw Top COC -> output-side effective lag tau_top -> predicted measured Top COC",
+  "freeze_rule": "Any future change to k, cp, tau, h, epsilon, geometry, or lag placement must constitute a new model version rather than silently modifying V1."
+}
