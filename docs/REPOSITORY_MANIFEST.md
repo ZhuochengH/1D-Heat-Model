@@ -62,6 +62,8 @@ Concise map of the reorganized repository (2026-08-22 finalization).
 
 ## Documentation (`docs/`)
 
+- `CODE_ARCHITECTURE.md` — technical architecture guide (physics, FDM,
+  data flow, module responsibilities, modification guide).
 - `CALIBRATION_HISTORY.md` — full calibration history incl. final promotion.
 - `CALIBRATION_STRATEGIES.md` — calibration strategy write-ups.
 - `FINAL_MODEL_RELEASE.md` — release notes.
