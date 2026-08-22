@@ -856,7 +856,7 @@ def write_summary(r, out_dir):
       "dominated; internal radiative exchange across the air gap is omitted, "
       "so the insulation resistance may be somewhat overestimated.")
     A("-" * 72)
-    A("Authority: calibration 72C RMSE {:.4f} C; external validation "
+    A("Authority: calibration 66C RMSE {:.4f} C; external validation "
       "RMSE {:} C".format(
           m["calib_66C_RMSE_C"],
           {k: f"{v:.4f}" for k, v in

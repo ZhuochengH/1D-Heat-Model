@@ -263,8 +263,9 @@ Results (zero-refit, known offset):
   measured ~65 C during 20C-setpoint dips; near-zero mean residual =
   symmetric phase errors, not bias)
 - External validation mean/median/worst RMSE: 1.8403 / 1.3749 / 3.0817 C
-  (calibration 0.6368 and 3s 1.0643 excluded from external stats as
-  calibration/reference respectively; 3s retained as read-only authoritative)
+  (computed from the three external datasets 60C, 72C, and 3s ONLY;
+  66C calibration RMSE 0.6368 is NOT included; 3s authoritative under
+  SIMULTANEOUS_START_RELATIVE_T0)
 - Cross-temperature bias: WEAK (60C -0.512, 66C +0.032, 72C -0.001,
   3s +0.036; no monotonic trend, max consecutive |diff| 0.544 C)
 - Classification: ACCEPTABLE_MULTI_DATASET_TRANSFER

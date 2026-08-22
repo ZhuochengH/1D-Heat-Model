@@ -46,16 +46,26 @@ Corrected 66 C redo dataset: **RMSE = 0.6368 C**.
 
 ## External validation (zero-refit, authoritative)
 
+All RMSE values are **predicted Top COC vs measured Top COC** (bare-top
+validation architecture). There is no directly measured sample-layer
+temperature, hence no sample-layer RMSE.
+
 | dataset | RMSE |
 |---|---|
 | 60 C | 1.3749 C |
 | 72 C | 3.0817 C |
 | 3 s extension | 1.0643 C |
 | **mean external RMSE** | **1.8403 C** |
+| median external RMSE | 1.3749 C |
+| worst external RMSE | 3.0817 C |
 
-Synchronization: 60 C / 72 C use the experimentally known
-`SETPOINT_90C_EVENT_PLUS_1S` rule; 3 s extension uses
-`SIMULTANEOUS_START_RELATIVE_T0`.
+Synchronization (no fitted time shift for any dataset):
+
+- 60 C / 72 C: experimentally known `SETPOINT_90C_EVENT_PLUS_1S` rule
+  (Top COC recording starts 1.0 s after the internal protocol enters
+  Setpoint = 90.000 C).
+- 3 s extension: documented simultaneous-start relative-t0 alignment
+  `SIMULTANEOUS_START_RELATIVE_T0`.
 
 ## Known limitation
 
@@ -81,6 +91,26 @@ Modes: `--model bare | insulated | both`, `--start-s` / `--end-s` windowing
 - **Insulated** (`LEGACY_INSULATED_LAYERS`, 4050 um: + 3 mm sealed air +
   200 um PDMS cap): forward extension only, **not independently validated**
   as an insulated geometry. Sealed air is treated as pure conduction.
+
+## Insulated sample prediction (3 s-extension protocol)
+
+Model-predicted sample-layer temperature (frozen parameters, insulated
+forward geometry, no refitting):
+
+- predicted overall sample maximum: **~89.07 C**
+- repeated-cycle sample peak mean: **~85.67 C**
+- repeated-cycle sample peak median: **~85.52 C**
+
+Interpretation:
+
+- Sample temperature is **model-predicted**, not directly measured.
+- **No sample-temperature RMSE is available.**
+- The insulated geometry is a forward-model extension and was not
+  independently validated using direct insulated sample-layer temperature
+  measurements.
+- Top-surface validation supports the reduced-order model's thermal
+  transfer behavior, but sample-layer temperature remains a model-derived
+  hidden state and was not directly measured.
 
 ## Repository structure
 

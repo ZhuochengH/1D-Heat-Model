@@ -35,9 +35,14 @@ Corrected 66 C redo dataset (Top COC + internal, synchronized relative t0):
 | 72 C | SETPOINT_90C_EVENT_PLUS_1S | 3.0817 C |
 | 3 s extension | SIMULTANEOUS_START_RELATIVE_T0 | 1.0643 C |
 | mean external | — | 1.8403 C |
+| median external | — | 1.3749 C |
+| worst external | — | 3.0817 C |
 
-All validation used the same locked parameters with no refitting, no
-time-shift optimization, and no qPCR/sample information.
+All RMSE values are predicted Top COC vs measured Top COC (bare-top
+validation architecture); there is no directly measured sample-layer
+temperature, hence no sample-layer RMSE. All validation used the same
+locked parameters with no refitting, no time-shift optimization (no
+fitted time shift for any dataset), and no qPCR/sample information.
 
 ## Known limitation
 
@@ -59,6 +64,19 @@ uv run python workflows/prediction/predict_sample_temperature_frozen_model.py \
   independently validated.
 - Sample temperature: model-predicted hidden state, not directly measured.
   External Top RMSE is not a direct sample-temperature uncertainty.
+
+## Insulated sample prediction (3 s-extension protocol)
+
+- predicted overall sample maximum: ~89.07 C
+- repeated-cycle sample peak mean: ~85.67 C
+- repeated-cycle sample peak median: ~85.52 C
+
+These are model-predicted sample temperatures (frozen parameters,
+insulated forward geometry), NOT validation measurements. Sample-layer
+temperature was not directly measured; no sample-temperature RMSE is
+available. The insulated geometry is a forward-model extension and was
+not independently validated using direct insulated sample-layer
+temperature measurements.
 
 ## Scientific limitations
 
