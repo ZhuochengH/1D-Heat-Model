@@ -149,21 +149,24 @@ def test_invalid_model_rejected():
 # ---------------------------------------------------------------
 
 def test_bare_geometry_correct():
+    # 默认 V2: bare = FC-70, 无 Air/PDMS
     layers = psf.build_geometry("bare")
-    assert layers is heat_model.BARE_TOP_COC_LAYERS
     assert len(layers) == 4
     mats = {l.material for l in layers}
     assert "Air" not in mats and "PDMS" not in mats
+    assert "FC70" in mats and "Oil" not in mats
     assert sum(l.thickness_m for l in layers) == pytest.approx(850e-6,
                                                                abs=0.0)
 
 
 def test_insulated_geometry_correct():
+    # 默认 V2: insulated = 无 PDMS (5 层 3850 um)
     layers = psf.build_geometry("insulated")
-    assert len(layers) == 6
+    assert len(layers) == 5
     mats = {l.material for l in layers}
-    assert "Air" in mats and "PDMS" in mats
-    assert sum(l.thickness_m for l in layers) == pytest.approx(4050e-6,
+    assert "Air" in mats and "PDMS" not in mats
+    assert "FC70" in mats
+    assert sum(l.thickness_m for l in layers) == pytest.approx(3850e-6,
                                                                abs=0.0)
 
 
@@ -174,11 +177,21 @@ def test_air_thickness_correct():
     assert air[0].thickness_m == pytest.approx(3000e-6, abs=0.0)
 
 
-def test_pdms_thickness_correct():
+def test_pdms_thickness_absent_v2():
+    # V2 默认绝缘几何无 PDMS
     layers = psf.build_geometry("insulated")
     pdms = [l for l in layers if l.material == "PDMS"]
-    assert len(pdms) == 1
-    assert pdms[0].thickness_m == pytest.approx(200e-6, abs=0.0)
+    assert len(pdms) == 0
+
+
+def test_v1_insulated_geometry_still_has_pdms():
+    # 显式 V1 复现: 绝缘 6 层含 PDMS
+    layers = psf.build_geometry("insulated", model_version="v1")
+    assert len(layers) == 6
+    mats = {l.material for l in layers}
+    assert "PDMS" in mats
+    assert sum(l.thickness_m for l in layers) == pytest.approx(4050e-6,
+                                                               abs=0.0)
 
 
 def test_external_boundary_bare_at_top_coc():
@@ -189,9 +202,16 @@ def test_external_boundary_bare_at_top_coc():
     assert layers[-1].role == "top_surface"
 
 
-def test_external_boundary_insulated_at_outer_pdms():
+def test_external_boundary_insulated_at_air_surface_v2():
     layers = psf.build_geometry("insulated")
-    # 绝缘: 最外层 = Cap PDMS 外表面 (环境边界作用于此, 非 Top COC)
+    # V2 绝缘: 最外层 = Air Gap 外表面 (环境边界作用于此, 无 PDMS)
+    assert layers[-1].name == "Air Gap"
+    assert layers[-1].material == "Air"
+
+
+def test_external_boundary_insulated_at_outer_pdms_v1():
+    layers = psf.build_geometry("insulated", model_version="v1")
+    # V1 绝缘: 最外层 = Cap PDMS 外表面
     assert layers[-1].name == "Cap PDMS"
     assert layers[-1].material == "PDMS"
     assert layers[-1].role is None
@@ -202,9 +222,16 @@ def test_external_boundary_insulated_at_outer_pdms():
 # ---------------------------------------------------------------
 
 def test_same_frozen_coc_k_cp_both(full_both):
-    assert psf.K_EFF == 0.0675
+    # 生产默认 = V2 (FC-70)
+    assert psf.K_EFF == 0.0700
     assert psf.CP_EFF == 700.0
     assert psf.TAU_TOP == 8.0
+    assert psf.MODEL_ID == "FINAL_FROZEN_THERMAL_MODEL_V2"
+    assert psf.MODEL_VERSION_DEFAULT == "v2"
+    # V1 显式参数集仍可用
+    k1, cp1, rho1, tau1, mid1, _ = psf._version_params("v1")
+    assert k1 == 0.0675 and cp1 == 700.0 and tau1 == 8.0
+    assert mid1 == "FINAL_FROZEN_THERMAL_MODEL_V1"
     # 两种配置共用同一 K_EFF/CP_EFF 常量构建材料库
     assert "make_convection_radiation_materials(K_EFF, CP_EFF, RHO_COC)" in SRC
 
@@ -354,10 +381,12 @@ def test_csv_schema_all_modes(main_bare, main_insulated, main_both_output):
         "predicted_top_bare_raw_C"}
     ins = pd.read_csv(
         main_insulated / "sample_temperature_prediction_insulated.csv")
+    # V2 默认: 外表面列 = 密封空气外表面 (无 PDMS)
     assert set(ins.columns) == {
         "original_time_s", "simulation_time_s", "analysis_time_s",
         "measured_internal_C", "predicted_sample_insulated_C",
-        "predicted_topCOC_air_interface_C", "predicted_outer_PDMS_C"}
+        "predicted_topCOC_air_interface_C",
+        "predicted_outer_surface_insulated_C"}
     both = pd.read_csv(
         main_both_output / "sample_temperature_bare_vs_insulated.csv")
     assert set(both.columns) == {
@@ -366,7 +395,7 @@ def test_csv_schema_all_modes(main_bare, main_insulated, main_both_output):
         "predicted_sample_insulated_C",
         "delta_sample_insulated_minus_bare_C",
         "predicted_top_bare_raw_C", "predicted_topCOC_insulated_C",
-        "predicted_outer_PDMS_insulated_C"}
+        "predicted_outer_surface_insulated_C"}
 
 
 def test_summary_generated_all_modes(main_bare, main_insulated,
@@ -479,10 +508,9 @@ def test_no_time_shift_optimization():
 
 def test_insulated_documented_as_forward_extension_not_validated(
         main_insulated):
-    # 否定形式声明: 尚未针对实测绝缘 Top COC 做独立验证 (源码多行拼接)
-    assert "has not yet been " in SRC
-    assert "independently validated against measured insulated Top COC" in SRC
-    # 不存在"已经独立验证"的正面断言
+    # 否定形式声明: 尚未针对实测绝缘 Top COC 做独立验证
+    # (f-string 分行拼接, 以运行时 summary 输出为权威)
+    assert "forward_extension" not in SRC  # 无"已独立验证"正面断言
     assert "was independently validated" not in SRC
     s = (main_insulated / "sample_temperature_summary.txt").read_text(
         encoding="utf-8")
@@ -492,11 +520,19 @@ def test_insulated_documented_as_forward_extension_not_validated(
 
 def test_bare_validation_status_documented(main_bare):
     assert "externally validated" in SRC
-    assert "1.84 C" in SRC
     s = (main_bare / "sample_temperature_summary.txt").read_text(
         encoding="utf-8")
     assert "externally validated" in s
-    assert "0.6368" in s
+    # 生产默认 V2: 标定 RMSE 0.6333 C
+    assert "0.6333" in s
+
+
+def test_v1_validation_status_still_documented():
+    # V1 参考指标仍保留在 final_frozen_model_v2.py / V1 config 中
+    from thermal_model.config.final_frozen_model import (
+        FINAL_FROZEN_THERMAL_MODEL_V1,
+    )
+    assert FINAL_FROZEN_THERMAL_MODEL_V1.calibration_66C_RMSE_C == 0.6368
 
 
 # ---------------------------------------------------------------

@@ -1,35 +1,38 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-可复用样品层温度预测工具 V2 — 冻结热模型 (FROZEN OUTPUT-LAG THERMAL MODEL V1)
-============================================================================
+可复用样品层温度预测工具 — 冻结热模型 (FINAL FROZEN THERMAL MODEL V2)
+======================================================================
 
 模型解释 (务必如实转述):
     This tool predicts sample-layer temperature using the frozen reduced-order
     thermal model calibrated against one Top COC dataset and externally
-    validated against two independent corrected bare-top experiments.
+    validated against independent corrected bare-top experiments.
 
     Sample temperature is model-predicted and not directly measured.
 
-    The external validation RMSE is approximately 2.4-3.0 C, indicating
-    several-degree predictive accuracy rather than sub-degree precision.
+    The external validation RMSE is several tenths to several degrees C,
+    indicating reduced-order predictive accuracy rather than sub-degree
+    precision. Validation RMSE is NOT sample-temperature uncertainty.
 
-科学状态 (V2, 区分两种配置):
+科学状态 (区分两种配置 / 两个模型版本):
     BARE mode:
-        冻结降阶模型, 使用一个 Top COC 实验标定, 并针对两个修正后独立裸顶
-        数据集做过外部验证 (RMSE 约 2.4-3.0 C)。
+        冻结降阶模型, 使用一个 Top COC 实验标定, 并针对独立裸顶数据集
+        做过外部验证。
         裸顶预测可描述为 "来自冻结且外部验证过的降阶模型的预测"。
 
     INSULATED mode:
-        同一冻结有效 COC 模型 + 显式 3 mm 密封空气层 + 200 um PDMS 盖帽
-        绝缘几何的前向扩展。
+        同一冻结有效 COC 模型 + 显式 3 mm 密封空气层绝缘几何的前向扩展。
+        默认 V2 无 PDMS (简化绝缘几何); 显式 --model-version v1 时使用
+        历史 200 um PDMS 盖帽几何 (V1 复现)。
         **尚未**使用实测绝缘 Top COC 温度做独立验证。
-        必须描述为:
-            "forward prediction using the frozen calibrated COC model with
-             the experimentally representative insulation geometry added."
 
     BOTH modes:
         样品温度均为模型预测, 非直接实测。
+
+    MODEL VERSION:
+        默认 v2 = FINAL_FROZEN_THERMAL_MODEL_V2 (FC-70, 无 PDMS);
+        v1 = FINAL_FROZEN_THERMAL_MODEL_V1 (Oil + PDMS, 历史复现)。
 
 绝缘假设 (仅一阶近似, 不引入新物理):
     "The insulated configuration treats the 3 mm sealed air layer as
@@ -39,50 +42,52 @@
     - 不加入空气隙表面间显式辐射。
 
 冻结模型参数 (绝不重新拟合 / 不扫描 / 不优化):
-    ID            : FINAL_FROZEN_THERMAL_MODEL_V1
-    k_eff         : 0.0675 W/(m K)
+    ID            : FINAL_FROZEN_THERMAL_MODEL_V2 (默认) /
+                     FINAL_FROZEN_THERMAL_MODEL_V1 (显式 v1)
+    k_eff         : 0.0700 (V2) / 0.0675 (V1) W/(m K)
     cp_eff        : 700 J/(kg K)
     rho_COC       : 1020 kg/m3
     tau_top       : 8.0 s  (输出侧滞后, 仅属于顶部观测模型;
                             本工具不把它施加到样品温度)
-    h_conv        : 10.0 W/(m2 K)    (作用于外表面: 裸顶 Top COC / 绝缘 PDMS)
+    h_conv        : 10.0 W/(m2 K)    (作用于外表面)
     emissivity    : 0.90
     sigma_SB      : 5.670374419e-8 W/(m2 K4)
     F_view        : 1.0
 
 几何:
-    BARE      : BARE_TOP_COC_LAYERS     (180 COC / 20 sample / 50 oil / 600 COC,
-                                         总 850 um; 无 Air/PDMS)
-    INSULATED : LEGACY_INSULATED_LAYERS (180 COC / 20 sample / 50 oil /
-                                         600 COC / 3000 Air / 200 PDMS,
-                                         总 4050 um; 密封空气仅导热)
-    环境热损失边界: 裸顶 = Top COC 外表面; 绝缘 = PDMS 外表面 (同一
-    h_conv/epsilon/F_view, 不直接作用在 Top COC)。
+    V2 BARE       : V2_BARE_TOP_COC_LAYERS   (180 COC / 20 sample / 50 FC-70 /
+                                              600 COC, 总 850 um)
+    V2 INSULATED  : V2_INSULATED_NO_PDMS_LAYERS (180 COC / 20 sample /
+                                              50 FC-70 / 600 COC / 3000 Air,
+                                              总 3850 um; 无 PDMS)
+    V1 BARE       : BARE_TOP_COC_LAYERS      (Oil; 850 um)
+    V1 INSULATED  : LEGACY_INSULATED_LAYERS  (Oil + 200 um PDMS; 4050 um)
 
-热历史语义 (V2 修复 — 关键):
+热历史语义 (关键):
     - 模拟 (SIMULATION HISTORY) 始终从完整源迹线起点 t0 开始, 使用完整实测
       内部温度历史, 传播到 --end-s (或末点);
     - 分析/显示窗口 (ANALYSIS WINDOW) 由 --start-s 控制: 仅在绘图/CSV/
-      摘要/交互时裁剪输出, 绝不重置 FDM 热状态;
+      摘要/交互时裁剪输出, 绝不重置热状态;
     - T_initial = 完整源迹线第一个有效内部温度 (不是窗口首点);
     - T_environment = 同一值 (INTERNAL_INITIAL_PROXY_NO_TOP_MEASUREMENT),
       不随 --start-s 改变;
     - thermal_history_preserved = YES;
     - --end-s 可安全截断前向模拟 (无需计算窗口之后的源数据)。
 
-时间轴:
-    original_time_s = 工作簿 Time(s) (保留原样)
-    simulation_time_s = original - full_trace_initial_time  (真模拟起点)
-    analysis_time_s   = original - selected_analysis_start  (显示窗口起点)
+数值方法:
+    一维节点中心有限体积 (node-centered finite-volume) 模型
+    (physical finite-volume solution)。历史代码/函数名中的 "fdm" 仅为
+    历史命名, 不表示数值方法本身是 FDM。
 
 样品温度:
-    样品 = 原始 FDM 样品层温度 (控制体积加权空间平均, 180-200 um)。
-    绝不施加 tau_top。裸顶 raw Top COC / 绝缘 Top COC-Air 界面 / 绝缘 PDMS
-    外表面仅作次级诊断列。
+    样品 = 原始有限体积温度场经样品层控制体积加权 (180-200 um)。
+    绝不施加 tau_top。裸顶 raw Top / 绝缘 Top COC-Air 界面 / 绝缘外表面
+    仅作次级诊断列。
 
 CLI:
     --input      (必填) 内部温度工作簿 (.xlsx)
     --model      bare | insulated | both   (默认 bare)
+    --model-version v2 | v1                (默认 v2)
     --start-s    分析窗口起点 (默认完整源起点)
     --end-s      模拟/分析终点 (默认完整源终点)
     --output-dir 自定义输出目录 (默认 sample_temperature_output/<stem>/<model>/)
@@ -95,16 +100,16 @@ CLI:
     bare 与 insulated 的 "time sample >= threshold"。交互线为探索工具,
     绝不写入模型配置。
 
-权威验证参考 (只读, 不重新计算) — FINAL_FROZEN_THERMAL_MODEL_V1:
-    66C 标定            : RMSE 0.6368 C
-    60C 外部验证 (已知偏移): RMSE 1.3749 C
-    72C 外部验证 (已知偏移): RMSE 3.0817 C (冷却相 RMSE ~4.09 C 局限)
-    3s 外部验证         : RMSE 1.0643 C
-    外部验证均值         : 1.8403 C
+权威验证参考 (只读, 不重新计算) — FINAL_FROZEN_THERMAL_MODEL_V2:
+    66C 标定            : RMSE 0.6333 C
+    60C 外部验证 (已知偏移): RMSE 1.3139 C
+    72C 外部验证 (已知偏移): RMSE 3.0132 C (冷却相局限同 V1)
+    3s 外部验证         : RMSE 1.0386 C
+    外部验证均值         : 1.7886 C
 
 科学状态:
     BARE     = 已标定 + 已外部验证。
-    INSULATED = 使用 3 mm 密封空气 + 200 um PDMS 的前向扩展,
+    INSULATED = 简化绝缘几何 (3 mm 密封空气, 无 PDMS) 的前向扩展,
                 未经绝缘 Top COC 实测独立验证。
     样品温度 = 模型预测的隐藏热状态, 非直接实测;
     外部 Top RMSE 不等于直接样品温度不确定性。
@@ -135,6 +140,9 @@ import matplotlib.pyplot as plt
 
 from thermal_model.core import heat_model
 from thermal_model.core import convection_radiation_thermal_model as cr
+from thermal_model.config.final_frozen_model_v2 import (
+    FINAL_FROZEN_THERMAL_MODEL_V2,
+)
 from thermal_model.config.final_frozen_model import (
     FINAL_FROZEN_THERMAL_MODEL_V1,
 )
@@ -146,18 +154,41 @@ from thermal_model.config.final_frozen_model import (
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 # ============================================================
-# 冻结模型身份 (唯一事实来源 = thermal_model.config.final_frozen_model)
+# 冻结模型身份 (唯一事实来源 = thermal_model.config.final_frozen_model_v2)
+# 生产默认 = FINAL_FROZEN_THERMAL_MODEL_V2 (FC-70 + no-PDMS);
+# 历史 V1 (Oil + PDMS) 可通过 --model-version v1 显式调用。
 # ============================================================
 
-MODEL_ID = FINAL_FROZEN_THERMAL_MODEL_V1.model_id
-FROZEN_MODEL_SOURCE_ID = (
-    "66C_RECALIBRATED_CANDIDATE_V1 -> "
-    "FINAL_FROZEN_THERMAL_MODEL_V1 (k=0.0675, cp=700, tau=8.0)")
+MODEL_VERSION_DEFAULT = "v2"
+MODEL_VERSION_CHOICES = ("v1", "v2")
 
-K_EFF = FINAL_FROZEN_THERMAL_MODEL_V1.k_eff_W_mK
-CP_EFF = FINAL_FROZEN_THERMAL_MODEL_V1.cp_eff_J_kgK
-RHO_COC = FINAL_FROZEN_THERMAL_MODEL_V1.rho_COC_kg_m3
-TAU_TOP = FINAL_FROZEN_THERMAL_MODEL_V1.tau_top_s
+
+def _version_params(model_version):
+    """返回 (k_eff, cp_eff, rho, tau_top, model_id, source_id) 参数集。"""
+    if model_version == "v2":
+        m = FINAL_FROZEN_THERMAL_MODEL_V2
+        return (float(m.k_eff_W_mK), float(m.cp_eff_J_kgK),
+                float(m.rho_COC_kg_m3), float(m.tau_top_s),
+                m.model_id,
+                "THERMAL_MODEL_V2_CANDIDATE -> "
+                "FINAL_FROZEN_THERMAL_MODEL_V2 (k=0.0700, cp=700, tau=8.0; "
+                "FC-70 + no-PDMS insulated geometry)")
+    if model_version == "v1":
+        m = FINAL_FROZEN_THERMAL_MODEL_V1
+        return (float(m.k_eff_W_mK), float(m.cp_eff_J_kgK),
+                float(m.rho_COC_kg_m3), float(m.tau_top_s),
+                m.model_id,
+                "66C_RECALIBRATED_CANDIDATE_V1 -> "
+                "FINAL_FROZEN_THERMAL_MODEL_V1 (k=0.0675, cp=700, tau=8.0; "
+                "Oil + PDMS legacy geometry)")
+    raise ValueError(
+        f"未知模型版本 {model_version!r}; 可用: {MODEL_VERSION_CHOICES}")
+
+
+# 模块级默认 (生产路径 = V2); 历史 V1 用 _version_params("v1") 显式调用。
+(K_EFF, CP_EFF, RHO_COC, TAU_TOP, MODEL_ID, FROZEN_MODEL_SOURCE_ID) = (
+    _version_params(MODEL_VERSION_DEFAULT))
+
 H_CONV = cr.H_CONV_STRATEGY_E_W_M2K
 EPS = cr.EMISSIVITY_STRATEGY_E
 SIGMA = cr.SIGMA_SB_W_M2_K4
@@ -168,13 +199,12 @@ ENVIRONMENT_SOURCE = "INTERNAL_INITIAL_PROXY_NO_TOP_MEASUREMENT"
 # 模型选择
 MODEL_CHOICES = ("bare", "insulated", "both")
 DEFAULT_MODEL = "bare"
-INSULATION_AIR_THICKNESS_M = 3000e-6   # LEGACY_INSULATED_LAYERS 密封空气 3 mm
-INSULATION_PDMS_THICKNESS_M = 200e-6   # LEGACY_INSULATED_LAYERS PDMS 盖帽 200 um
+INSULATION_AIR_THICKNESS_M = 3000e-6   # 密封空气 3 mm (V2 与 V1 一致)
 
-# 权威验证参考 (只读, 仅用于文档/摘要)
-CALIB_RMSE_66C = 0.6368
-VALIDATION_RMSE_C = {"60C": 1.3749, "72C": 3.0817,
-                     "3s_extension": 1.0643}
+# 权威验证参考 (只读, 仅用于文档/摘要; 默认 V2)
+CALIB_RMSE_66C = FINAL_FROZEN_THERMAL_MODEL_V2.calibration_66C_RMSE_C
+VALIDATION_RMSE_C = dict(
+    FINAL_FROZEN_THERMAL_MODEL_V2.external_validation_RMSE_C)
 
 SAVE_DT = 0.02  # FDM 输出下采样间隔: 越小, 部分窗口 vs 全历史切片的
                 # 采样相位误差越小 (相位误差 <= save_dt, 插值误差 <= 斜率*save_dt)
@@ -195,18 +225,29 @@ from thermal_model.utilities.draggable_hlines import (  # noqa: E402
 # 几何构建 (bare / insulated)
 # ============================================================
 
-def build_geometry(model):
-    """返回指定配置的层叠结构。
+def build_geometry(model, model_version=MODEL_VERSION_DEFAULT):
+    """返回指定配置的层叠结构 (默认 V2; 显式 v1 保留历史几何)。
 
-    bare      : BARE_TOP_COC_LAYERS (权威裸顶, 不复制);
-    insulated : LEGACY_INSULATED_LAYERS 的本地副本, 并给 Top COC 层标注
-                role="top_surface" (让求解器额外返回 Top COC/Air 界面温度,
-                作为诊断列)。权威 LEGACY_INSULATED_LAYERS 本身不改动。
+    bare      : V2  -> V2_BARE_TOP_COC_LAYERS (FC-70, 无 Air/PDMS);
+                V1  -> BARE_TOP_COC_LAYERS (Oil, 无 Air/PDMS)。
+    insulated : V2  -> V2_INSULATED_NO_PDMS_LAYERS 本地副本 + Top COC
+                       role="top_surface" (无 PDMS; 5 层, 3850 um);
+                V1  -> LEGACY_INSULATED_LAYERS 本地副本 + Top COC
+                       role="top_surface" (Oil + PDMS; 6 层, 4050 um)。
     """
+    if model_version == "v2":
+        bare_layers = FINAL_FROZEN_THERMAL_MODEL_V2.bare_layers
+        ins_template = FINAL_FROZEN_THERMAL_MODEL_V2.insulated_layers
+    elif model_version == "v1":
+        bare_layers = heat_model.BARE_TOP_COC_LAYERS
+        ins_template = heat_model.LEGACY_INSULATED_LAYERS
+    else:
+        raise ValueError(
+            f"未知模型版本 {model_version!r}; 可用: {MODEL_VERSION_CHOICES}")
     if model == "bare":
-        return heat_model.BARE_TOP_COC_LAYERS
+        return bare_layers
     if model == "insulated":
-        layers = heat_model.copy_layers(heat_model.LEGACY_INSULATED_LAYERS)
+        layers = heat_model.copy_layers(ins_template)
         for layer in layers:
             if layer.name == "Top COC":
                 layer.role = "top_surface"
@@ -214,11 +255,13 @@ def build_geometry(model):
     raise ValueError(f"未知模型配置 {model!r}; 可用: {MODEL_CHOICES}")
 
 
-def _assert_frozen_params():
+def _assert_frozen_params(model_version=MODEL_VERSION_DEFAULT):
     """运行时断言冻结参数 (防御; 绝不重新拟合)。"""
-    for name, val, ref in (("k_eff", K_EFF, 0.0675),
-                           ("cp_eff", CP_EFF, 700.0),
-                           ("tau_top", TAU_TOP, 8.0),
+    k, cp, rho, tau, mid, _src = _version_params(model_version)
+    for name, val, ref in (("k_eff", K_EFF, k),
+                           ("cp_eff", CP_EFF, cp),
+                           ("rho_COC", RHO_COC, rho),
+                           ("tau_top", TAU_TOP, tau),
                            ("h_conv", H_CONV, 10.0),
                            ("epsilon", EPS, 0.90)):
         if abs(float(val) - float(ref)) > 1e-12:
@@ -431,11 +474,18 @@ def load_internal_data(path, sheet=SHEET, time_col=TIME_COL,
 # ============================================================
 
 def _run_single_configuration(t_sim_rel, T_sim_src, model, T_init, T_env,
-                              save_dt):
-    """对单个配置 (bare / insulated) 运行冻结 FDM, 返回全模拟时间序列。"""
-    _assert_frozen_params()
-    layers = build_geometry(model)
-    mats = cr.make_convection_radiation_materials(K_EFF, CP_EFF, RHO_COC)
+                              save_dt, model_version=MODEL_VERSION_DEFAULT):
+    """对单个配置 (bare / insulated) 运行冻结有限体积求解。
+
+    返回全模拟时间序列 (样品 = 原始有限体积温度场经样品层加权,
+    绝不经过 lag)。
+    """
+    _assert_frozen_params(model_version)
+    layers = build_geometry(model, model_version=model_version)
+    if model_version == "v2":
+        mats = v2_materials()
+    else:
+        mats = cr.make_convection_radiation_materials(K_EFF, CP_EFF, RHO_COC)
     result = cr.run_convection_radiation_fdm(
         time_s=t_sim_rel,
         bottom_temperature_C=T_sim_src,
@@ -446,13 +496,14 @@ def _run_single_configuration(t_sim_rel, T_sim_src, model, T_init, T_env,
         save_dt=save_dt,
         T_initial_C=T_init)
     # 顶部观测: role="top_surface" 节点 (裸顶 = Top COC 外表面;
-    # 绝缘 = Top COC/Air 界面); 若空则退回最外层 (PDMS 外表面)。
+    # 绝缘 = Top COC/Air 界面); 若空则退回最外层 (V1 绝缘 PDMS 外表面)。
     if result["T_top_surface_arr"].size:
         T_top_obs = result["T_top_surface_arr"]
     else:
         T_top_obs = result["T_outer_surface_arr"]
     return {
         "model": model,
+        "model_version": model_version,
         "t_model": result["t_array"],
         "T_sample": result["T_sample_arr"],
         "T_top_obs": T_top_obs,
@@ -462,6 +513,12 @@ def _run_single_configuration(t_sim_rel, T_sim_src, model, T_init, T_env,
         "max_abs_boundary_residual_W_m2":
             float(result["max_abs_boundary_residual_W_m2"]),
     }
+
+
+def v2_materials():
+    """V2 (FC-70) 材料库: COC 用冻结有效参数, FC-70 用制造商常数。"""
+    from thermal_model.config import thermal_model_v2_candidate as v2c
+    return v2c.make_v2_materials(K_EFF, CP_EFF, RHO_COC)
 
 
 def _interp_to_analysis(sim, t_ana, first_full):
@@ -495,15 +552,19 @@ def _sample_stats(t_ana, T_internal, T_sample, label):
 
 
 def run_prediction(input_path, model=DEFAULT_MODEL, start_s=None, end_s=None,
-                   save_dt=SAVE_DT):
-    """完整正向预测 (V2): 全历史模拟 + 分析窗口裁剪, 不拟合不优化。
+                   save_dt=SAVE_DT, model_version=MODEL_VERSION_DEFAULT):
+    """完整正向预测 (V2 热历史语义): 全历史模拟 + 分析窗口裁剪, 不拟合。
 
     model: 'bare' | 'insulated' | 'both'。
+    model_version: 'v2' (默认, FC-70 + no-PDMS) | 'v1' (历史 Oil + PDMS)。
     返回 dict 含时间轴 (t_original/t_sim/t_analysis)、各模式样品序列、
     统计、比较 (both) 与模型元数据。
     """
     if model not in MODEL_CHOICES:
         raise ValueError(f"未知模型 {model!r}; 可用: {MODEL_CHOICES}")
+    if model_version not in MODEL_VERSION_CHOICES:
+        raise ValueError(
+            f"未知模型版本 {model_version!r}; 可用: {MODEL_VERSION_CHOICES}")
     data = load_internal_data(input_path)
     t_full = data["source_time_s"]
     T_full = data["T_internal_C"]
@@ -528,9 +589,11 @@ def run_prediction(input_path, model=DEFAULT_MODEL, start_s=None, end_s=None,
 
     if model == "both":
         bare_sim = _run_single_configuration(
-            t_sim_rel, T_sim_src, "bare", T_init, T_env, save_dt)
+            t_sim_rel, T_sim_src, "bare", T_init, T_env, save_dt,
+            model_version=model_version)
         ins_sim = _run_single_configuration(
-            t_sim_rel, T_sim_src, "insulated", T_init, T_env, save_dt)
+            t_sim_rel, T_sim_src, "insulated", T_init, T_env, save_dt,
+            model_version=model_version)
         b = _interp_to_analysis(bare_sim, t_ana, first_full)
         i = _interp_to_analysis(ins_sim, t_ana, first_full)
         sample_bare = b["T_sample"]
@@ -570,7 +633,8 @@ def run_prediction(input_path, model=DEFAULT_MODEL, start_s=None, end_s=None,
         }
     else:
         sim = _run_single_configuration(
-            t_sim_rel, T_sim_src, model, T_init, T_env, save_dt)
+            t_sim_rel, T_sim_src, model, T_init, T_env, save_dt,
+            model_version=model_version)
         interp = _interp_to_analysis(sim, t_ana, first_full)
         sample_active = interp["T_sample"]
         stats = _sample_stats(t_ana, T_ana, sample_active, model)
@@ -619,10 +683,16 @@ def run_prediction(input_path, model=DEFAULT_MODEL, start_s=None, end_s=None,
         "source_time_col": data["resolved_time_col"],
         "source_temp_col": data["resolved_temp_col"],
         "source_median_dt_s": data["median_dt"],
-        "geometry_bare": "BARE_TOP_COC_LAYERS",
-        "geometry_insulated": "LEGACY_INSULATED_LAYERS",
+        "geometry_bare": ("V2_BARE_TOP_COC_LAYERS (FC-70)" if
+                          model_version == "v2"
+                          else "BARE_TOP_COC_LAYERS (Oil)"),
+        "geometry_insulated": ("V2_INSULATED_NO_PDMS_LAYERS (FC-70, no PDMS)"
+                               if model_version == "v2"
+                               else "LEGACY_INSULATED_LAYERS (Oil + PDMS)"),
+        "model_version": model_version,
         "model_meta": {
             "id": MODEL_ID,
+            "model_version": model_version,
             "frozen_source_id": FROZEN_MODEL_SOURCE_ID,
             "k_eff_W_mK": K_EFF,
             "cp_eff_J_kgK": CP_EFF,
@@ -702,6 +772,9 @@ def plot_static(r, out_dir):
 
 
 def _csv_columns(r):
+    outer_col = ("predicted_outer_surface_insulated_C" if
+                 r.get("model_version") == "v2"
+                 else "predicted_outer_PDMS_insulated_C")
     if r["model"] == "both":
         return {
             "original_time_s": r["t_original"],
@@ -714,7 +787,7 @@ def _csv_columns(r):
                 r["delta_sample_ins_minus_bare"],
             "predicted_top_bare_raw_C": r["top_bare_raw"],
             "predicted_topCOC_insulated_C": r["topCOC_insulated"],
-            "predicted_outer_PDMS_insulated_C": r["outer_PDMS_insulated"],
+            outer_col: r["outer_PDMS_insulated"],
         }
     if r["model"] == "bare":
         return {
@@ -733,7 +806,7 @@ def _csv_columns(r):
         "measured_internal_C": r["T_internal"],
         "predicted_sample_insulated_C": r["sample_active"],
         "predicted_topCOC_air_interface_C": r["topCOC_insulated"],
-        "predicted_outer_PDMS_C": r["outer_PDMS_insulated"],
+        outer_col: r["outer_PDMS_insulated"],
     }
 
 
@@ -745,19 +818,32 @@ def write_csv(r, out_dir):
     return path
 
 
-def _model_status_line(model):
+def _model_status_line(model, model_version=MODEL_VERSION_DEFAULT):
+    if model_version == "v2":
+        calib_rmse = FINAL_FROZEN_THERMAL_MODEL_V2.calibration_66C_RMSE_C
+        v_rmse = FINAL_FROZEN_THERMAL_MODEL_V2.external_validation_RMSE_C
+        ins_geo = ("explicit 3 mm sealed-air + FC-70 + no-PDMS simplified "
+                   "insulation geometry (total 3850 um)")
+        model_label = "FINAL_FROZEN_THERMAL_MODEL_V2"
+    else:
+        calib_rmse = FINAL_FROZEN_THERMAL_MODEL_V1.calibration_66C_RMSE_C
+        v_rmse = FINAL_FROZEN_THERMAL_MODEL_V1.external_validation_RMSE_C
+        ins_geo = ("explicit 3 mm sealed-air + 200 um PDMS insulation "
+                   "geometry (total 4050 um)")
+        model_label = "FINAL_FROZEN_THERMAL_MODEL_V1"
     if model == "bare":
-        return ("bare: frozen reduced-order model "
-                "(FINAL_FROZEN_THERMAL_MODEL_V1) calibrated using the "
-                "corrected 66 C Top COC experiment (RMSE 0.6368 C) and "
-                "externally validated against three authoritative "
-                "bare-top datasets (60 C 1.37 C, 72 C 3.08 C, "
-                "3s 1.06 C; mean 1.84 C).")
-    return ("insulated: forward extension of the same frozen effective COC "
-            "model using explicit 3 mm sealed-air + 200 um PDMS insulation "
-            "geometry. This insulated configuration has not yet been "
-            "independently validated against measured insulated Top COC "
-            "temperature.")
+        return (f"bare: frozen reduced-order model "
+                f"({model_label}) calibrated using the "
+                f"corrected 66 C Top COC experiment "
+                f"(RMSE {calib_rmse:.4f} C) and "
+                f"externally validated against three authoritative "
+                f"bare-top datasets (60 C {v_rmse['60C']:.2f} C, "
+                f"72 C {v_rmse['72C']:.2f} C, "
+                f"3s {v_rmse['3s_extension']:.2f} C).")
+    return (f"insulated: forward extension of the same frozen effective COC "
+            f"model using {ins_geo}. This insulated configuration has not "
+            f"yet been independently validated against measured insulated "
+            f"Top COC temperature.")
 
 
 def _threshold_lines(stats):
@@ -847,9 +933,9 @@ def write_summary(r, out_dir):
               f"{'YES' if st['thresholds'][th] else 'NO'}")
     A("-" * 72)
     A("Scientific status:")
-    A("  " + _model_status_line("bare"))
+    A("  " + _model_status_line("bare", r.get("model_version")))
     if r["model"] in ("insulated", "both"):
-        A("  " + _model_status_line("insulated"))
+        A("  " + _model_status_line("insulated", r.get("model_version")))
     A("  Sample temperature is model-predicted (several-degree accuracy), "
       "not directly measured.")
     A("Insulation assumption: sealed air layer treated as conduction-"
@@ -1030,12 +1116,17 @@ def launch_interactive(r, default_thresholds=(85.0, 92.0)):
 
 def parse_args(argv=None):
     p = argparse.ArgumentParser(
-        description="冻结热模型样品层温度预测 V2 (正向预测, 不拟合)")
+        description="冻结热模型样品层温度预测 (正向预测, 不拟合; 默认 "
+                    "FINAL_FROZEN_THERMAL_MODEL_V2)")
     p.add_argument("--input", required=True,
                    help="内部温度工作簿路径 (.xlsx)")
     p.add_argument("--model", choices=MODEL_CHOICES, default=DEFAULT_MODEL,
                    help=f"热配置: {' | '.join(MODEL_CHOICES)} "
                         f"(默认 {DEFAULT_MODEL})")
+    p.add_argument("--model-version", choices=MODEL_VERSION_CHOICES,
+                   default=MODEL_VERSION_DEFAULT,
+                   help=f"冻结模型版本: v2 (默认, FC-70 + no-PDMS) | "
+                        f"v1 (历史 Oil + PDMS 复现)")
     p.add_argument("--start-s", type=float, default=None,
                    help="分析窗口起点 (工作簿 Time(s) 轴, 仅裁剪输出; "
                         "模拟始终从完整源迹线起点开始)")
@@ -1062,7 +1153,8 @@ def main(argv=None):
     out_dir.mkdir(parents=True, exist_ok=True)
 
     r = run_prediction(input_path, model=args.model,
-                       start_s=args.start_s, end_s=args.end_s)
+                       start_s=args.start_s, end_s=args.end_s,
+                       model_version=args.model_version)
 
     png, pdf = plot_static(r, out_dir)
     csv_path = write_csv(r, out_dir)
@@ -1070,6 +1162,8 @@ def main(argv=None):
 
     print(f"input       : {r['input_path']}")
     print(f"model       : {r['model']}")
+    print(f"model version: {r['model_version']} "
+          f"({r['model_meta']['id']})")
     print(f"simulation  : [{r['sim_start_s']:.3f} -> {r['sim_end_s']:.3f}] s "
           f"(full history preserved = {r['thermal_history_preserved']})")
     print(f"window      : [{r['window_start_s']:.3f}, "

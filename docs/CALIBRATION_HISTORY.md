@@ -312,3 +312,48 @@ superseded history at thermal_model/historical/frozen_strategy_G_candidate.py.
 Repository reorganized by function (thermal_model/ core + config/utilities,
 workflows/ calibration|validation|prediction|diagnostics|legacy, docs/).
 Git tag: thermal-model-final-v1.
+
+---
+
+## FINAL MODEL V2 PROMOTION — 2026-08-30
+
+The V2 candidate (FC-70 + no-PDMS simplified insulated geometry), after
+recalibration, three-dataset external validation, sample prediction and
+sensitivity validation, is promoted to:
+
+    FINAL_FROZEN_THERMAL_MODEL_V2
+
+Scientific changes vs V1:
+    1. Sealing liquid identified correctly as 3M Fluorinert FC-70
+       (k=0.070, rho=1940, cp=1050 J/(kg K), constant room-temperature).
+    2. Simplified insulated geometry intentionally omits the thin PDMS
+       sealing layer (insulated stack now 3850 um, no PDMS).
+    Bare calibration/validation geometry only changed oil -> FC-70.
+
+Parameters:
+    k_eff   = 0.0700 W/(m K)   (was 0.0675)
+    cp_eff  = 700 J/(kg K)     (unchanged)
+    rho_COC = 1020 kg/m3
+    tau_top = 8.0 s            (output-side lag, Top observation only)
+
+Validation evidence:
+    66 C calibration        : RMSE 0.6333 C   (was 0.6368)
+    60 C external validation: RMSE 1.3139 C   (was 1.3749)
+    72 C external validation: RMSE 3.0132 C   (was 3.0817)
+    3 s external validation : RMSE 1.0386 C   (was 1.0643)
+    mean external RMSE      : 1.7886 C        (was 1.8403)
+
+Sample prediction (08.24 no-holding, 29 cycles):
+    mean HIGH 84.703 C (V1 84.574, +0.129)
+    mean LOW  58.686 C (V1 58.757, -0.071)
+    range     26.017 C (V1 25.817, +0.200)
+
+Sensitivity (OAT ±10%): broadly consistent with V1; k_eff most sensitive;
+cp_eff/rho_COC dominant; FC-70 heat capacity slightly more sensitive than
+historical oil; no parameter comparable to k_eff; tau_top negative control
+PASS.
+
+V1 (FINAL_FROZEN_THERMAL_MODEL_V1, Oil + PDMS) retained as
+legacy/reproducibility model; historical tags untouched.
+
+New Git tag: thermal-model-final-v2.
