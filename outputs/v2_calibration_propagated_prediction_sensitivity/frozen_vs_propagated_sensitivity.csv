@@ -1,0 +1,8 @@
+frozen_parameter,calibration_parameter,frozen_direct_S_range_C,end_to_end_S_combined_C,end_to_end_minus_frozen_C,note
+rho_COC,rho_COC,0.5307976438549176,3.219202814567563,2.6884051707126453,frozen: k_eff/cp_eff held at baseline; end-to-end: perturbed fixed input + recalibrated k_eff'/cp_eff' both propagated
+h_conv,h_conv,0.0282559898215168,0.3841630119035031,0.3559070220819863,frozen: k_eff/cp_eff held at baseline; end-to-end: perturbed fixed input + recalibrated k_eff'/cp_eff' both propagated
+epsilon,epsilon,0.0178749958317325,0.21137726693785333,0.19350227110612084,frozen: k_eff/cp_eff held at baseline; end-to-end: perturbed fixed input + recalibrated k_eff'/cp_eff' both propagated
+k_FC70,fc70_k,0.0456406653847274,0.045640665384535595,-1.918049052918036e-13,frozen: k_eff/cp_eff held at baseline; end-to-end: perturbed fixed input + recalibrated k_eff'/cp_eff' both propagated
+cp_FC70,fc70_cp,0.1824506320192362,0.18245063201923628,8.326672684688674e-17,frozen: k_eff/cp_eff held at baseline; end-to-end: perturbed fixed input + recalibrated k_eff'/cp_eff' both propagated
+k_sample,water_k,0.0059626426411441,0.0059626426411441,0.0,frozen: k_eff/cp_eff held at baseline; end-to-end: perturbed fixed input + recalibrated k_eff'/cp_eff' both propagated
+cp_sample,water_cp,0.1362404081408073,0.1362404081408073,0.0,frozen: k_eff/cp_eff held at baseline; end-to-end: perturbed fixed input + recalibrated k_eff'/cp_eff' both propagated

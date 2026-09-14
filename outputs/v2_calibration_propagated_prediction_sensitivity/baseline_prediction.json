@@ -1,0 +1,23 @@
+{
+  "mode": "BASELINE (perturbed-free config + recalibrated baseline k/cp, identical to 0.0700/700)",
+  "k_eff_W_mK": 0.07,
+  "cp_eff_J_kgK": 700.0,
+  "rho_COC_kg_m3": 1020.0,
+  "tau_top_s_recorded_not_applied": 8.0,
+  "mean_high_C": 84.7033656033978,
+  "median_high_C": 84.69551929111805,
+  "mean_low_C": 58.68616387604836,
+  "median_low_C": 58.97173635049398,
+  "mean_range_C": 26.017201727349434,
+  "overall_sample_max_C": 89.09693044781783,
+  "n_complete_cycles": 29,
+  "Nx": 186,
+  "dt_s": 7.8375e-05,
+  "newton_max_iter": 2,
+  "max_abs_boundary_residual_W_m2": 9.663381206337363e-13,
+  "input": "/mnt/d/桌面/微流控毕设/Calibration/08.24 am_15x primers, no holding_zone1_temperature_analysis.xlsx",
+  "activation_excluded_s": [
+    8.637,
+    43.264
+  ]
+}

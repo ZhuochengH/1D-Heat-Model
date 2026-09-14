@@ -1,0 +1,68 @@
+==========================================================================
+V2 CALIBRATION-PROPAGATED SAMPLE-PREDICTION SENSITIVITY REPORT
+==========================================================================
+model: FINAL_FROZEN_THERMAL_MODEL_V2 (k=0.0700, cp=700, tau=8.0 s; FC-70; insulated no-PDMS)
+input: 08.24 am_15x primers, no holding_zone1_temperature_analysis.xlsx; cycles: 29 complete
+baseline: HIGH=84.7034 LOW=58.6862 range=26.0172 max=89.0969 C
+
+1. END-TO-END SENSITIVITY RANKING (S = mean |Δ| across the pair; bounded params use available pair)
+   rho_COC            S_HIGH= 1.5256  S_LOW= 1.6936  S_AMP= 3.2192  combined= 3.2192  pair=rho_COC_-10 / rho_COC_+10
+   geom_Top COC       S_HIGH= 0.5094  S_LOW= 0.3399  S_AMP= 0.8494  combined= 0.8494  pair=geom_top_coc_-10 / geom_top_coc_+10
+   geom_Bottom COC    S_HIGH= 0.4259  S_LOW= 0.2325  S_AMP= 0.6583  combined= 0.6583  pair=geom_bottom_coc_-10 / geom_bottom_coc_+10
+   h_conv             S_HIGH= 0.1834  S_LOW= 0.2008  S_AMP= 0.3842  combined= 0.3842  pair=h_conv_-10 / h_conv_+10
+   epsilon            S_HIGH= 0.0875  S_LOW= 0.1239  S_AMP= 0.2114  combined= 0.2114  pair=epsilon_0.80 / epsilon_1.00
+   fc70_cp            S_HIGH= 0.0957  S_LOW= 0.0868  S_AMP= 0.1825  combined= 0.1825  pair=fc70_cp_-10 / fc70_cp_+10
+   fc70_rho           S_HIGH= 0.0957  S_LOW= 0.0868  S_AMP= 0.1825  combined= 0.1825  pair=fc70_rho_-10 / fc70_rho_+10
+   geom_FC-70         S_HIGH= 0.0907  S_LOW= 0.0669  S_AMP= 0.1576  combined= 0.1576  pair=geom_fc70_-10 / geom_fc70_+10
+   geom_PCR Sample    S_HIGH= 0.0744  S_LOW= 0.0677  S_AMP= 0.1421  combined= 0.1421  pair=geom_pcr_sample_-10 / geom_pcr_sample_+10
+   water_rho          S_HIGH= 0.0710  S_LOW= 0.0653  S_AMP= 0.1362  combined= 0.1362  pair=water_rho_-10 / water_rho_+10
+   water_cp           S_HIGH= 0.0710  S_LOW= 0.0653  S_AMP= 0.1362  combined= 0.1362  pair=water_cp_-10 / water_cp_+10
+   fc70_k             S_HIGH= 0.0278  S_LOW= 0.0179  S_AMP= 0.0456  combined= 0.0456  pair=fc70_k_-10 / fc70_k_+10
+   water_k            S_HIGH= 0.0035  S_LOW= 0.0025  S_AMP= 0.0060  combined= 0.0060  pair=water_k_-10 / water_k_+10
+
+2. DIRECT / INDIRECT / TOTAL DECOMPOSITION (S_HIGH / S_LOW)
+   rho_COC            HIGH: d=0.2553 i=1.2729 t=1.5256 (int -0.0026) | LOW: d=0.2755 i=1.4319 t=1.6936 (int -0.0138)
+   geom_Top COC       HIGH: d=0.0416 i=0.5763 t=0.5094 (int -0.1084) | LOW: d=0.1311 i=0.4893 t=0.3399 (int -0.2804)
+   geom_Bottom COC    HIGH: d=0.7208 i=0.2973 t=0.4259 (int -0.5923) | LOW: d=0.5201 i=0.2845 t=0.2325 (int -0.5721)
+   h_conv             HIGH: d=0.0132 i=0.1820 t=0.1834 (int -0.0118) | LOW: d=0.0150 i=0.2024 t=0.2008 (int -0.0166)
+   epsilon            HIGH: d=0.0075 i=0.0869 t=0.0875 (int -0.0069) | LOW: d=0.0086 i=0.1246 t=0.1239 (int -0.0093)
+   fc70_cp            HIGH: d=0.0957 i=0.0000 t=0.0957 (int +0.0000) | LOW: d=0.0868 i=0.0000 t=0.0868 (int +0.0000)
+   fc70_rho           HIGH: d=0.0957 i=0.0000 t=0.0957 (int +0.0000) | LOW: d=0.0868 i=0.0000 t=0.0868 (int +0.0000)
+   geom_FC-70         HIGH: d=0.0683 i=0.0916 t=0.0907 (int -0.0692) | LOW: d=0.0691 i=0.0678 t=0.0669 (int -0.0700)
+   geom_PCR Sample    HIGH: d=0.0744 i=0.0000 t=0.0744 (int +0.0000) | LOW: d=0.0677 i=0.0000 t=0.0677 (int +0.0000)
+   water_rho          HIGH: d=0.0710 i=0.0000 t=0.0710 (int +0.0000) | LOW: d=0.0653 i=0.0000 t=0.0653 (int +0.0000)
+   water_cp           HIGH: d=0.0710 i=0.0000 t=0.0710 (int +0.0000) | LOW: d=0.0653 i=0.0000 t=0.0653 (int +0.0000)
+   fc70_k             HIGH: d=0.0278 i=0.0000 t=0.0278 (int +0.0000) | LOW: d=0.0179 i=0.0000 t=0.0179 (int +0.0000)
+   water_k            HIGH: d=0.0035 i=0.0000 t=0.0035 (int +0.0000) | LOW: d=0.0025 i=0.0000 t=0.0025 (int +0.0000)
+
+3. FROZEN vs END-TO-END
+   rho_COC          frozen=0.5308 end-to-end=3.2192 diff=+2.6884
+   h_conv           frozen=0.0283 end-to-end=0.3842 diff=+0.3559
+   epsilon          frozen=0.0179 end-to-end=0.2114 diff=+0.1935
+   k_FC70           frozen=0.0456 end-to-end=0.0456 diff=-0.0000
+   cp_FC70          frozen=0.1825 end-to-end=0.1825 diff=+0.0000
+   k_sample         frozen=0.0060 end-to-end=0.0060 diff=+0.0000
+   cp_sample        frozen=0.1362 end-to-end=0.1362 diff=+0.0000
+
+4. IDENTIFIABILITY FLAGS
+   epsilon            BOUNDARY_LIMITED_CALIBRATION (warn=CP_MIN|CP_MIN)
+   fc70_cp            BOUNDARY_LIMITED_CALIBRATION (warn=CP_MIN|CP_MIN)
+   fc70_k             BOUNDARY_LIMITED_CALIBRATION (warn=CP_MIN|CP_MIN)
+   fc70_rho           BOUNDARY_LIMITED_CALIBRATION (warn=CP_MIN|CP_MIN)
+   geom_Bottom COC    BOUNDARY_LIMITED_CALIBRATION (warn=CP_MIN|CP_MIN)
+   geom_FC-70         BOUNDARY_LIMITED_CALIBRATION (warn=CP_MIN|CP_MIN)
+   geom_PCR Sample    BOUNDARY_LIMITED_CALIBRATION (warn=CP_MIN|CP_MIN)
+   geom_Top COC       BOUNDARY_LIMITED_CALIBRATION (warn=CP_MIN|CP_MIN)
+   h_conv             BOUNDARY_LIMITED_CALIBRATION (warn=CP_MIN|CP_MIN)
+   rho_COC            BOUNDARY_LIMITED_CALIBRATION (warn=CP_MIN|CP_MAX)
+   water_cp           BOUNDARY_LIMITED_CALIBRATION (warn=CP_MIN|CP_MIN)
+   water_k            BOUNDARY_LIMITED_CALIBRATION (warn=CP_MIN|CP_MIN)
+   water_rho          BOUNDARY_LIMITED_CALIBRATION (warn=CP_MIN|CP_MIN)
+
+5. NUMERICAL CHECKS
+   forward runs=85, Nx values=[174, 182, 185, 186, 187, 190, 198], max Newton iter=2, max |boundary residual|=9.66e-13
+   tau_top applied to sample: False (recorded only)
+   failed cases: none
+
+6. KEY QUESTION
+   Does parameter compensation that stabilizes the Top-COC calibration also stabilize the final sample-temperature prediction? -> see ranking vs frozen comparison above.

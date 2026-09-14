@@ -1,0 +1,14 @@
+param,calib_warnings_pair,cp_eff_shift_gt_50pct,identifiability_flag
+rho_COC,CP_MIN | CP_MAX,True,BOUNDARY_LIMITED_CALIBRATION (CP_MAX optimum; identifiability warning)
+geom_Top COC,CP_MIN | CP_MIN,False,"NONE (CP_MIN expansion is pipeline behavior, not a warning)"
+geom_Bottom COC,CP_MIN | CP_MIN,False,"NONE (CP_MIN expansion is pipeline behavior, not a warning)"
+h_conv,CP_MIN | CP_MIN,False,"NONE (CP_MIN expansion is pipeline behavior, not a warning)"
+epsilon,CP_MIN | CP_MIN,False,"NONE (CP_MIN expansion is pipeline behavior, not a warning)"
+fc70_cp,CP_MIN | CP_MIN,False,"NONE (CP_MIN expansion is pipeline behavior, not a warning)"
+fc70_rho,CP_MIN | CP_MIN,False,"NONE (CP_MIN expansion is pipeline behavior, not a warning)"
+geom_FC-70,CP_MIN | CP_MIN,False,"NONE (CP_MIN expansion is pipeline behavior, not a warning)"
+geom_PCR Sample,CP_MIN | CP_MIN,False,"NONE (CP_MIN expansion is pipeline behavior, not a warning)"
+water_rho,CP_MIN | CP_MIN,False,"NONE (CP_MIN expansion is pipeline behavior, not a warning)"
+water_cp,CP_MIN | CP_MIN,False,"NONE (CP_MIN expansion is pipeline behavior, not a warning)"
+fc70_k,CP_MIN | CP_MIN,False,"NONE (CP_MIN expansion is pipeline behavior, not a warning)"
+water_k,CP_MIN | CP_MIN,False,"NONE (CP_MIN expansion is pipeline behavior, not a warning)"

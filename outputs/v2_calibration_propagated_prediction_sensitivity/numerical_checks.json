@@ -1,0 +1,23 @@
+{
+  "n_forward_runs": 85,
+  "baseline_Nx": 186,
+  "baseline_dt_s": 7.8375e-05,
+  "all_Nx_values": [
+    174,
+    182,
+    185,
+    186,
+    187,
+    190,
+    198
+  ],
+  "dt_recomputed_per_run": true,
+  "max_newton_iter": 2,
+  "max_abs_boundary_residual_W_m2": 9.663381206337363e-13,
+  "n_cycles_high_consistent": 29,
+  "failed_cases": [],
+  "tau_top_applied_to_sample": false,
+  "tau_top_mechanism": "sample = raw finite-volume field sample-layer average; tau_top only affects Top observation and is recorded but not applied",
+  "no_pdms": true,
+  "fc70_used": true
+}
