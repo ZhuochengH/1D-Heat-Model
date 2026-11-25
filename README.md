@@ -14,7 +14,7 @@ not directly measured in this experiment.
 
 The device logs the temperature of an internal (Peltier-associated) sensor.
 The chip itself — a thin COC cartridge holding a water-based PCR sample
-under a mineral-oil layer — is not instrumented. This repository provides a
+under a fluorinated FC-70 oil layer — is not instrumented. This repository provides a
 fast 1D finite-difference thermal model that:
 
 1. simulates the chip's thermal response from the measured internal trace,
@@ -22,94 +22,131 @@ fast 1D finite-difference thermal model that:
    independent Top thermocouple data), and
 3. predicts the **sample-layer temperature** (model-derived, not measured).
 
-All analysis is driven by frozen, versioned parameters; the final model is
-`FINAL_FROZEN_THERMAL_MODEL_V1`.
+The scientific reference for this README is the master's thesis
+*Fast digital PCR using picoliter cavities on a Lab-on-a-Disc*.
+The thesis-reported parameters, validation errors, and sample-temperature
+predictions are summarized below.
+
+> **Version and reproducibility note:** The existing public V1 release
+> (`FINAL_FROZEN_THERMAL_MODEL_V1`) is a historical implementation. Its
+> configuration and validation results differ from those reported in the
+> thesis. The thesis results below are reported values, not a claim that
+> the public V1 code reproduces them. The exact thesis analysis revision,
+> input records, synchronization rules, and evaluation windows still
+> need to be linked to a reproducible release. The legacy commands and
+> file paths retained in this README describe the existing V1 workflow.
 
 ## Model Overview
 
-```
-measured internal temperature
+Bare-top calibration and validation architecture:
+
+```text
+Measured internal temperature
         |
         v
-  1D multilayer FDM
-  (conduction + top convection + nonlinear Stefan-Boltzmann radiation)
+Time-dependent bottom boundary
         |
-        +----------------+----------------+
-        |                |                |
-        v                v                v
-   Sample layer    raw Top COC       bottom boundary
-   (layer-averaged,   |                (Dirichlet)
-    never lagged)     v
-                 output-side first-order observation lag
-                 (tau_top = 8.0 s)
-                       |
-                       v
-              predicted measured Top COC
+        v
+1D multilayer FDM
+(conduction + external convection + radiation)
+        |
+        +--------------------------+
+        |                          |
+        v                          v
+Layer-averaged sample T       Raw Top COC T
+(no observation lag)                |
+                                     v
+                             First-order observation lag
+                             (tau_top = 8 s)
+                                     |
+                                     v
+                             Predicted Top observation
 ```
 
 - **Bottom boundary**: measured internal temperature (time-dependent
   Dirichlet condition).
-- **Top boundary**: natural convection plus nonlinear radiation to a
+- **Top boundary**: assumed external convection plus nonlinear radiation to a
   constant ambient (Robin condition).
 - **Observation lag**: the raw FDM Top temperature is passed through a
   first-order output-side lag before being compared with thermometer data.
   This lag is applied to the **Top observation only** — never to the sample
   layer or to the chip physics.
 
-## Final Frozen Model
+## Thesis-Reported Frozen Model
 
-`FINAL_FROZEN_THERMAL_MODEL_V1` (promoted 2026-08-22):
+The thesis uses the following effective parameters and fixed model inputs:
 
-| parameter | value | meaning |
-|---|---|---|
-| k_eff | 0.0675 W/(m K) | effective COC thermal conductivity |
-| cp_eff | 700 J/(kg K) | effective COC specific heat capacity |
-| rho_COC | 1020 kg/m3 | COC density (fixed) |
-| tau_top | 8.0 s | output-side Top observation lag |
-| h_conv | 10 W/(m2 K) | top natural-convection coefficient (fixed) |
-| epsilon | 0.90 | top surface emissivity (fixed) |
-| sigma_SB | 5.670374419e-8 W/(m2 K4) | Stefan-Boltzmann constant |
-| F_view | 1.0 | radiation view factor (fixed) |
+| Parameter | Value | Meaning |
+|---|---:|---|
+| `k_eff` | 0.0700 W/(m·K) | Effective COC thermal conductivity |
+| `cp_eff` | 700 J/(kg·K) | Effective COC specific heat capacity |
+| `rho_COC` | 1020 kg/m³ | Fixed COC density |
+| `tau_top` | 8.0 s | Output-side Top COC observation lag |
+| `h_conv` | 10 W/(m²·K) | Assumed external convection coefficient |
+| `epsilon` | 0.90 | Assumed surface emissivity |
+| `sigma_SB` | 5.670374419 × 10⁻⁸ W/(m²·K⁴) | Stefan–Boltzmann constant |
+| `F_view` | 1.0 | Assumed radiation view factor |
 
-> **Important**: `k_eff` and `cp_eff` are **system-level reduced-order
-> effective parameters** obtained by calibration. They are **not** newly
-> measured intrinsic TOPAS/COC material constants.
+> `k_eff` and `cp_eff` are calibrated, system-level effective parameters,
+> not independently measured intrinsic COC material properties. The
+> observation lag describes the Top COC measurement response; it is not
+> applied to the predicted sample temperature.
 
-The authoritative configuration lives in
-[`thermal_model/config/final_frozen_model.py`](thermal_model/config/final_frozen_model.py)
-with a machine-readable copy in
-[`thermal_model/config/final_frozen_model_metadata.json`](thermal_model/config/final_frozen_model_metadata.json).
+The thesis reports an explicit finite-difference timestep of approximately
+78 µs. Numerical stability alone does not establish spatial or temporal
+convergence.
 
-## Model Validation
+The public V1 configuration and its machine-readable metadata remain
+available for historical reproducibility:
 
-All RMSE values below are **predicted Top COC vs measured Top COC**
-(bare-top validation architecture). There is no directly measured
-sample-layer temperature, hence no sample-layer RMSE.
+- [`thermal_model/config/final_frozen_model.py`](thermal_model/config/final_frozen_model.py)
+- [`thermal_model/config/final_frozen_model_metadata.json`](thermal_model/config/final_frozen_model_metadata.json)
 
-| stage | dataset | RMSE |
-|---|---|---|
-| calibration | 66 C Top COC | 0.6368 C |
-| external validation | 60 C Top COC | 1.3749 C |
-| external validation | 72 C Top COC | 3.0817 C |
-| external validation | 3 s-extension Top COC | 1.0643 C |
-| mean external-validation RMSE | 60 C + 72 C + 3 s extension | 1.8403 C |
-| median external-validation RMSE | — | 1.3749 C |
-| worst external-validation RMSE | — | 3.0817 C |
+These files should not be treated as the authoritative configuration for
+the thesis results until the corresponding analysis version is verified.
 
-Synchronization (no fitted time shift for any dataset):
+## Model Calibration and Validation (Thesis Results)
 
-- **60 C / 72 C**: experimentally known `SETPOINT_90C_EVENT_PLUS_1S` rule
-  (Top COC recording starts 1.0 s after the internal protocol enters
-  Setpoint = 90.000 C).
-- **3 s extension**: documented simultaneous-start relative-t0 alignment
-  (`SIMULTANEOUS_START_RELATIVE_T0`).
+The model was calibrated using the 66 °C Top COC dataset. Additional
+60 °C, 72 °C and 3 s-extension records were used to evaluate the frozen
+model against measured Top COC temperatures.
 
-All external validations are **zero-refit**: parameters were frozen after
-the 66 C calibration and never retuned.
+| Stage | Dataset | Thesis-reported RMSE |
+|---|---|---:|
+| Calibration | 66 °C Top COC | 0.64 °C |
+| Validation | 60 °C Top COC | 1.74 °C |
+| Validation | 72 °C Top COC | 1.24 °C |
+| Validation | 3 s-extension Top COC | 1.06 °C |
 
-**Known limitation**: the 72 C protocol shows a larger cooling-phase
-mismatch (cooling RMSE ~4.09 C). This is a documented reduced-order
-transient limitation; parameters were **not** altered to improve it.
+All four **thesis-reported Top COC RMSE values** are below 2 °C.
+These values describe agreement between predicted Top COC observations
+and measured Top COC temperatures in the bare-top configuration only.
+They do **not** quantify sample-temperature prediction accuracy.
+
+### Historical V1 results (not thesis results)
+
+For transparency, the archived V1 release reports the following values:
+
+| Dataset | V1 RMSE |
+|---|---:|
+| 66 °C calibration | 0.6368 °C |
+| 60 °C validation | 1.3749 °C |
+| 72 °C validation | 3.0817 °C |
+| 3 s-extension validation | 1.0643 °C |
+
+V1 uses `k_eff = 0.0675 W/(m·K)`. Its recorded synchronization rules are
+`SETPOINT_90C_EVENT_PLUS_1S` for the 60/72 °C datasets and
+`SIMULTANEOUS_START_RELATIVE_T0` for the 3 s-extension dataset. V1 reports
+zero-refit validation and a larger cooling-phase mismatch for its 72 °C
+record (cooling RMSE approximately 4.09 °C). These details are retained
+for V1 provenance only; they are not established as the exact analysis
+settings or residuals underlying the thesis table.
+
+The difference between the thesis and archived results remains a
+reproducibility issue until the specific thesis scripts, input files,
+alignment rules, and evaluation windows are identified. No model has
+been recalibrated and no archived numerical results have been altered
+by this documentation update.
 
 ## Repository Structure
 
@@ -148,7 +185,9 @@ uv sync
 
 This creates a `.venv/` with the exact locked dependency set.
 
-## Quick Start
+## Quick Start (Existing V1 Workflow)
+
+The commands below describe the existing public implementation, not a verified reproduction of the thesis results.
 
 The **primary user-facing workflow** is the frozen-model sample-temperature
 prediction tool:
@@ -197,21 +236,43 @@ Column names are matched flexibly (whitespace-normalized). Non-finite or
 invalid rows are dropped; the remaining time axis must be strictly
 increasing.
 
-## Prediction Modes
+## Model Geometries
 
-`--model` selects the chip geometry:
+The thesis represents the chip as a one-dimensional multilayer stack:
 
-| mode | meaning |
+| Layer (bottom to top) | Thickness |
+|---|---:|
+| Bottom COC | 180 µm |
+| PCR sample | 20 µm |
+| FC-70 oil | 50 µm |
+| Top COC | 600 µm |
+| **Bare chip total** | **850 µm** |
+| Air gap (insulated configuration only) | 3000 µm |
+| **Insulated model total** | **3850 µm** |
+
+The bare geometry is used for calibration and validation at the Top COC
+surface. The insulated configuration adds a 3 mm air layer above the
+Top COC as a forward-model extension. Air-gap heat transfer is modelled
+by conduction only; radiation across the gap and the sealing foil are
+omitted in the thesis model. The insulated configuration was not
+independently validated against insulated temperature measurements.
+
+### Existing V1 prediction modes
+
+The legacy command-line option `--model` selects the following V1
+geometries:
+
+| Mode | Meaning in V1 |
 |---|---|
-| `bare` (default) | calibrated + externally validated bare-top chip (850 um: 180 um COC / 20 um sample / 50 um oil / 600 um Top COC; top surface exposed to ambient) |
-| `insulated` | forward-model extension of the same chip with a 3 mm sealed-air gap and a 200 um PDMS cap (4050 um total); external convection/radiation moves to the outer PDMS surface |
-| `both` | runs both geometries and produces a direct comparison |
+| `bare` (default) | 850 µm bare-top chip |
+| `insulated` | Historical forward model with 3 mm air gap and 200 µm PDMS cap (4050 µm total) |
+| `both` | Runs both V1 geometries for comparison |
 
-> The bare geometry is experimentally validated at the Top COC level. The
-> insulated geometry is a **forward-model extension only** and was **not**
-> independently validated against insulated Top COC measurements.
+> The 200 µm PDMS cap belongs to the historical V1 insulated model and
+> is not part of the thesis geometry described above. Running the legacy
+> `insulated` mode is not equivalent to running the thesis model.
 
-## Command-Line Options
+## Command-Line Options (Existing V1 Workflow)
 
 Primary tool:
 `workflows/prediction/predict_sample_temperature_frozen_model.py`
@@ -236,7 +297,7 @@ Behavior when options are omitted:
 - descriptive thresholds are reported at 85 / 87 / 90 / 92 / 95 C
   (informational only — not PCR success/failure criteria).
 
-## Output Files
+## Output Files (Existing V1 Workflow)
 
 For each run the tool writes into
 `sample_temperature_output/<workbook-stem>/<model>/`:
@@ -248,12 +309,14 @@ For each run the tool writes into
 | `sample_temperature_summary.txt` | model identity, geometry, key statistics (max / mean / median / min, threshold crossings) and scientific-status notes |
 | interactive threshold window | if a GUI backend is available and `--no-gui` is not given |
 
-## Available Workflows
+## Available Workflows (Existing V1 Workflow)
+
+The following script inventory is retained from the existing repository documentation. It is not a verified manifest of the thesis analysis pipeline.
 
 | category | script | purpose | typical user |
 |---|---|---|---|
 | prediction | `workflows/prediction/predict_sample_temperature_frozen_model.py` | frozen-model sample-temperature prediction (primary) | primary |
-| calibration | `workflows/calibration/recalibrate_thermal_model_66C_redo.py` | 66 C recalibration that produced the final model | reproducibility |
+| calibration | `workflows/calibration/recalibrate_thermal_model_66C_redo.py` | Historical 66 °C recalibration | reproducibility |
 | calibration | `workflows/calibration/k_cp_tau_calibration_strategy.py` | lag-separated 3-parameter strategy (D) | advanced |
 | calibration | `workflows/calibration/alpha_cp_calibration_strategy.py` | alpha/cp strategy (B) | advanced |
 | calibration | `workflows/calibration/convection_radiation_k_cp_tau_calibration.py` | convection + radiation recalibration (F) | advanced |
@@ -276,7 +339,7 @@ For each run the tool writes into
 
 ### Calibration Workflows
 
-The final calibration used the corrected **66 C** dataset only, fitting
+The documented V1 calibration used the corrected **66 C** dataset only, fitting
 exactly three effective parameters (`k_eff`, `cp_eff`, `tau_top`) with all
 other physics fixed. qPCR/86 C data were never part of the fitting
 objective. The other calibration scripts document earlier strategies
@@ -284,18 +347,18 @@ objective. The other calibration scripts document earlier strategies
 
 ### Validation Workflows
 
-Validation is strictly **zero-refit**: frozen parameters are applied to
+The documented V1 validation is **zero-refit**: frozen parameters are applied to
 independent measured internal traces, the Top COC prediction is compared
 against independent Top measurements, and no parameter is retuned.
 Synchronization uses experimentally known timing (see
-[Model Validation](#model-validation)); fitted time shifts are never used.
+[Historical V1 results](#historical-v1-results-not-thesis-results)); fitted time shifts are never used.
 
 ### Prediction Workflows
 
 The prediction workflows apply the frozen model forward:
 
 - `predict_sample_temperature_frozen_model.py` — the primary tool (see
-  [Quick Start](#quick-start));
+  [Quick Start](#quick-start-existing-v1-workflow));
 - the other prediction scripts perform cross-protocol sample-peak and
   dwell-time analyses used in the PCR interpretation study.
 
@@ -339,37 +402,85 @@ contained **823 passing tests** covering numerical regression,
 calibration/validation structure, anti-circularity safeguards, and CLI
 behavior.
 
+## Thesis Sample-Temperature Predictions
+
+The thesis applies the frozen model to the insulated configuration to
+compare the original and fast thermocycling records. The following
+values are model predictions from the analyzed complete cycles, not
+independent sample-temperature measurements.
+
+| Metric | Original protocol (2026-09-10) | Fast protocol (2026-09-15) |
+|---|---:|---:|
+| Complete cycles analyzed | 39 | 29 |
+| Mean predicted sample HIGH | 89.23 °C | 85.78 °C |
+| Mean predicted sample LOW | 59.58 °C | 60.66 °C |
+| Mean exposure near sample HIGH | 14.55 s | 2.64 s |
+| Mean exposure near sample LOW | 59.01 s | 6.10 s |
+
+HIGH and LOW denote the local predicted sample-temperature extrema for
+each complete cycle. Exposure durations are evaluated within 5 °C of
+the respective cycle-specific extrema. They are descriptive thermal
+metrics, not programmed holding times or experimentally established
+PCR denaturation or annealing thresholds. The recorded/output time
+resolution is approximately 1 s, which limits the precision of these
+exposure-duration estimates.
+
+The records analyzed here contain 39 and 29 complete cycles from the
+original 40-cycle and fast 30-cycle programs, respectively. The incomplete
+cycles at the record boundaries are excluded from cycle-level analysis.
+The analyzed thermal records should not be assumed to represent every
+PCR experiment performed with the corresponding protocol name.
+
+## Sensitivity Analysis (Thesis Results)
+
+The thesis evaluates two complementary forms of local sensitivity:
+
+- **Frozen-model sensitivity:** perturb a model parameter while holding
+  the remaining parameters fixed, and evaluate the change in predicted
+  sample HIGH and LOW temperatures.
+- **Calibration-propagated sensitivity:** perturb a fixed model input,
+  recalibrate the effective parameters, and use the resulting model for
+  sample-temperature prediction.
+
+Selected thesis-reported combined sensitivity values are:
+
+| Analysis | Parameter | Combined sensitivity |
+|---|---|---:|
+| Frozen model | Effective COC thermal conductivity | 0.88 °C |
+| Frozen model | Effective COC specific heat capacity | 0.53 °C |
+| Calibration-propagated | COC density | 3.22 °C |
+| Calibration-propagated | Top COC thickness | 0.85 °C |
+| Calibration-propagated | Bottom COC thickness | 0.66 °C |
+
+These results describe the specified perturbations under the analyzed
+input record. They are not confidence intervals or independently measured
+prediction errors. In particular, the density perturbation reached a
+calibration search boundary; its large response may reflect parameter
+non-identifiability or search behavior rather than an independently
+established physical sensitivity. The exact input and settings for each
+thesis sensitivity figure should be documented with the reproducible
+analysis release.
+
 ## Scientific Scope and Limitations
 
-- The model is a **reduced-order 1D** representation; lateral effects are
-  neglected.
-- `k_eff` / `cp_eff` / `tau_top` are **effective** parameters, not intrinsic
-  material constants.
-- The **Top COC** temperature is experimentally measured and used for
-  calibration/validation.
-- The **sample-layer temperature is model-predicted** and was **not
-  directly measured**; no sample-temperature RMSE exists. Top-surface
-  validation supports the reduced-order model's thermal transfer behavior,
-  but the sample layer remains a model-derived hidden state.
-- The **insulated geometry** (3 mm sealed air + 200 um PDMS) is a
-  conduction-only forward extension and was **not independently validated**
-  as an insulated experimental geometry.
-- The **72 C** protocol shows a larger cooling-phase mismatch (cooling RMSE
-  ~4.09 C).
+- The model is a reduced-order 1D representation; lateral temperature
+  gradients are neglected.
+- The calibrated effective thermal properties are not intrinsic material
+  constants; the observation lag applies only to Top COC observations.
+- Calibration and validation are based on bare Top COC measurements.
+- Sample-layer temperature is a model-predicted hidden state. It was not
+  independently measured or validated; no sample-temperature RMSE exists.
+- The insulated geometry is a forward extension of the bare-top model.
+  Its assumptions about the air gap, sealing foil and external heat
+  transfer introduce additional model-form uncertainty.
+- The assumed boundary conditions and constant material properties are
+  simplifications. Stability of the explicit time-stepping scheme does
+  not by itself demonstrate numerical convergence.
+- Thesis-reported results and archived V1 outputs must not be mixed or
+  treated as interchangeable. The exact thesis analysis version needs
+  to be established before claiming numerical reproducibility.
 
-## Insulated Sample Prediction (3 s-extension protocol)
-
-Model-predicted sample-layer temperature (frozen parameters, insulated
-forward geometry, no refitting):
-
-- predicted overall sample maximum: **~89.07 C**
-- repeated-cycle sample peak mean: **~85.67 C**
-- repeated-cycle sample peak median: **~85.52 C**
-
-These are **model predictions**, not validation measurements. They must not
-be associated with any Top COC validation RMSE.
-
-## Documentation
+## Documentation (Historical V1)
 
 - [Code architecture](docs/CODE_ARCHITECTURE.md) — how the software works
   internally (physics, FDM, data flow, module responsibilities)
@@ -383,7 +494,18 @@ be associated with any Top COC validation RMSE.
 
 ## Citation / Project Status
 
-This is a research repository; no formal citation exists yet. Please refer
-to the repository and the release identifier
-**`FINAL_FROZEN_THERMAL_MODEL_V1`** (Git tag `thermal-model-final-v1`,
-corrected documentation tag `thermal-model-final-v1.0.1`).
+The scientific reference for the results summarized in this README is the
+master's thesis *Fast digital PCR using picoliter cavities on a
+Lab-on-a-Disc*. A formal publication citation is not yet provided here.
+
+For the historical software implementation, refer to the GitHub repository
+and `FINAL_FROZEN_THERMAL_MODEL_V1` (Git tag `thermal-model-final-v1`,
+corrected documentation tag `thermal-model-final-v1.0.1`). These tags identify
+V1, not a verified thesis-result release.
+
+A dedicated thesis-reproduction release should identify the matching
+configuration, geometry, source-code revision, input records, synchronization
+rules, evaluation windows, and scripts that generate the reported tables and
+figures. Until that provenance is established, the numerical results above
+are presented as thesis-reported values rather than independently reproduced
+outputs of this repository.
